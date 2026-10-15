@@ -7,18 +7,21 @@ export type BookingStatus = "P" | "C" | "D" | "X";
 export type ApprovalStatus = "P" | "A" | "R";
 
 export interface User {
+  id?: number;
   user_id: number;
   username: string;
   email: string;
-  gender: Gender;
+  gender?: Gender;
   phone: string;
   role_id: RoleId;
+  role?: "USER" | "SALON_OWNER" | "ADMIN" | string;
   created_at: string;
   is_locked?: boolean;
   avatar_url?: string;
   fullname?: string;
   dob?: string;
   address?: string;
+  salonId?: number;
 }
 
 export interface SalonOwner {

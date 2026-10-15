@@ -3,26 +3,25 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useState } from "react";
 import { z } from "zod";
-import { Loader2, Lock, User } from "lucide-react";
+import { Loader2, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ROLE_HOME } from "@/constants";
 import { authService } from "@/services/auth.service";
 import { useAuthStore } from "@/stores/auth.store";
 
 export const Route = createFileRoute("/auth/login")({
   head: () => ({
-    meta: [{ title: "Đăng nhập — AI Hairstyle Recommendation System" }],
+    meta: [{ title: "Đăng nhập — Curl Curator AI" }],
   }),
   component: LoginPage,
 });
 
 const schema = z.object({
-  username: z.string().min(2, "Tên đăng nhập tối thiểu 2 ký tự"),
+  email: z.string().email("Vui lòng nhập đúng định dạng email"),
   password: z.string().min(1, "Vui lòng nhập mật khẩu"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -34,7 +33,7 @@ function LoginPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { username: "", password: "" },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = async (values: FormValues) => {
@@ -42,8 +41,16 @@ function LoginPage() {
     try {
       const user = await authService.login(values);
       setUser(user);
-      toast.success(`Chào mừng ${user.username}!`);
-      navigate({ to: ROLE_HOME[user.role_id] });
+      toast.success(`Đăng nhập thành công! Chào mừng ${user.fullname || user.username}`);
+
+      // Tự động điều hướng theo vai trò (Role)
+      if (user.role === "ADMIN" || user.role_id === 1) {
+        navigate({ to: "/admin/approvals" });
+      } else if (user.role === "SALON_OWNER" || user.role_id === 3) {
+        navigate({ to: "/salon/bookings" });
+      } else {
+        navigate({ to: "/user/home" });
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Đăng nhập thất bại");
     } finally {
@@ -66,13 +73,13 @@ function LoginPage() {
             <span className="text-primary">bắt đầu từ AI.</span>
           </motion.h1>
           <p className="mt-4 max-w-md text-base text-muted-foreground">
-            Phân tích khuôn mặt, gợi ý kiểu tóc và đặt lịch salon — tất cả trong một nền tảng.
+            Phân tích khuôn mặt, gợi ý kiểu tóc và kết nối salon làm đẹp chuyên nghiệp.
           </p>
           <div className="mt-8 grid grid-cols-3 gap-4 text-sm">
             {[
-              { k: "20+", v: "Kiểu tóc" },
-              { k: "20+", v: "Salon" },
-              { k: "AI", v: "Recommendation" },
+              { k: "AI Smart", v: "Tư vấn kiểu tóc" },
+              { k: "100%", v: "Salon chọn lọc" },
+              { k: "Realtime", v: "Lịch hẹn tức thì" },
             ].map((s) => (
               <div key={s.v} className="rounded-2xl border border-border bg-card p-4">
                 <p className="text-2xl font-semibold text-primary">{s.k}</p>
@@ -92,25 +99,35 @@ function LoginPage() {
           </div>
           <h2 className="mt-6 text-2xl font-semibold tracking-tight">Đăng nhập</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Dùng tài khoản demo: <code className="font-mono text-primary">user1</code> /{" "}
-            <code className="font-mono text-primary">admin</code> /{" "}
-            <code className="font-mono text-primary">salon</code> (mật khẩu bất kỳ).
+            Nhập email và mật khẩu để tiếp tục phiên làm việc.
           </p>
+
+          <div className="mt-4 rounded-xl border border-border/80 bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">Tài khoản Quản trị viên (Admin):</p>
+            <p>
+              Email: <code className="font-mono text-primary font-semibold">admin@curator.ai</code>
+            </p>
+            <p>
+              Mật khẩu: <code className="font-mono text-primary font-semibold">Admin@123456</code>
+            </p>
+          </div>
 
           <form onSubmit={form.handleSubmit(onSubmit)} className="mt-6 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="username">Tên đăng nhập</Label>
+              <Label htmlFor="email">Email</Label>
               <div className="relative">
-                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  id="username"
-                  autoComplete="username"
+                  id="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  autoComplete="email"
                   className="pl-9"
-                  {...form.register("username")}
+                  {...form.register("email")}
                 />
               </div>
-              {form.formState.errors.username ? (
-                <p className="text-xs text-destructive">{form.formState.errors.username.message}</p>
+              {form.formState.errors.email ? (
+                <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
               ) : null}
             </div>
 
@@ -121,6 +138,7 @@ function LoginPage() {
                 <Input
                   id="password"
                   type="password"
+                  placeholder="••••••••"
                   autoComplete="current-password"
                   className="pl-9"
                   {...form.register("password")}

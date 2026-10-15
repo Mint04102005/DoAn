@@ -21,7 +21,8 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   /**
-   * Endpoint đăng ký tài khoản mới (mặc định role USER, hoặc SALON_OWNER)
+   * Endpoint đăng ký tài khoản mới (Chỉ cho phép USER hoặc SALON_OWNER)
+   * POST /api/auth/register
    */
   @Post('register')
   async register(@Body() dto: RegisterDto) {
@@ -29,7 +30,8 @@ export class AuthController {
   }
 
   /**
-   * Endpoint đăng nhập nhận JWT token
+   * Endpoint đăng nhập dùng chung cho cả 3 vai trò (USER, SALON_OWNER, ADMIN)
+   * POST /api/auth/login
    */
   @HttpCode(HttpStatus.OK)
   @Post('login')
@@ -39,17 +41,25 @@ export class AuthController {
 
   /**
    * Lấy thông tin tài khoản hiện tại từ JWT token
+   * GET /api/auth/me
    */
   @UseGuards(JwtAuthGuard)
-  @Get('profile')
-  getProfile(@CurrentUser() user: any) {
-    return {
-      user,
-    };
+  @Get('me')
+  async getMe(@CurrentUser() user: any) {
+    return this.authService.getMe(user.id);
   }
 
   /**
-   * Endpoint mẫu bảo vệ theo quyền ADMIN
+   * Alias: GET /api/auth/profile
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  async getProfile(@CurrentUser() user: any) {
+    return this.authService.getMe(user.id);
+  }
+
+  /**
+   * Endpoint kiểm tra quyền ADMIN
    */
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
@@ -62,7 +72,7 @@ export class AuthController {
   }
 
   /**
-   * Endpoint mẫu bảo vệ theo quyền SALON_OWNER
+   * Endpoint kiểm tra quyền SALON_OWNER
    */
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SALON_OWNER, Role.ADMIN)

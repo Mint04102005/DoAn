@@ -60,6 +60,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { bookingService } from "@/services/booking.service";
 import { salonService } from "@/services/salon.service";
 import { tryOnService } from "@/services/try-on.service";
+import { userService } from "@/services/user.service";
 import { useAuthStore } from "@/stores/auth.store";
 import type { Booking, BookingStatus, Gender, TryOnHistory } from "@/types";
 
@@ -153,18 +154,26 @@ function UserProfilePage() {
   // Booking status filter
   const [bookingStatusFilter, setBookingStatusFilter] = useState<BookingStatus | "ALL">("ALL");
 
+  // Real profile query from Backend API
+  const profileQuery = useQuery({
+    queryKey: ["user-me-profile"],
+    queryFn: () => userService.getProfile(),
+    staleTime: 1000 * 60 * 5,
+  });
+
   // Sync user data to form
   useEffect(() => {
-    if (user) {
-      setFullname(user.fullname || user.username || "");
-      setEmail(user.email || "");
-      setPhone(user.phone || "");
-      setGender(user.gender || "female");
-      setDob(user.dob || "2000-01-01");
-      setAddress(user.address || "Chưa cập nhật");
-      setAvatarUrl(user.avatar_url || "");
+    const active = profileQuery.data || user;
+    if (active) {
+      setFullname(active.fullname || active.username || "");
+      setEmail(active.email || "");
+      setPhone(active.phone || "");
+      setGender(active.gender || "male");
+      setDob(active.dob || "");
+      setAddress(active.address || "");
+      setAvatarUrl(active.avatar_url || "");
     }
-  }, [user, isEditing]);
+  }, [profileQuery.data, user, isEditing]);
 
   // Queries
   const historyQuery = useQuery({
@@ -192,40 +201,48 @@ function UserProfilePage() {
     );
   }
 
-  const handleSaveProfile = () => {
+  const currentUser = profileQuery.data || user;
+
+  const handleSaveProfile = async () => {
     if (!fullname.trim()) {
       toast.error("Họ và tên không được để trống");
       return;
     }
-    if (!email.includes("@")) {
-      toast.error("Email không hợp lệ");
-      return;
-    }
-    if (phone.length < 8) {
-      toast.error("Số điện thoại tối thiểu 8 chữ số");
-      return;
-    }
 
     setIsSavingProfile(true);
-    setTimeout(() => {
+    try {
+      const updated = await userService.updateProfile({
+        name: fullname.trim(),
+        phone: phone.trim() || undefined,
+        avatarUrl: avatarUrl || undefined,
+        gender: gender || undefined,
+        dob: dob.trim() || undefined,
+        address: address.trim() || undefined,
+      });
+
       setUser({
         ...user,
-        fullname: fullname.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        gender,
-        dob,
-        address: address.trim(),
-        avatar_url: avatarUrl,
+        ...updated,
+        fullname: updated.fullname || updated.username,
+        phone: updated.phone || "",
+        avatar_url: updated.avatar_url,
+        gender: updated.gender,
+        dob: updated.dob,
+        address: updated.address,
       });
+
+      await profileQuery.refetch();
       setIsEditing(false);
       setShowAvatarPicker(false);
-      setIsSavingProfile(false);
       toast.success("Cập nhật thông tin cá nhân thành công!");
-    }, 500);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Cập nhật thông tin thất bại");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentPwd) {
       toast.error("Vui lòng nhập mật khẩu hiện tại");
@@ -241,13 +258,20 @@ function UserProfilePage() {
     }
 
     setIsChangingPwd(true);
-    setTimeout(() => {
+    try {
+      const res = await userService.changePassword({
+        oldPassword: currentPwd,
+        newPassword: newPwd,
+      });
       setCurrentPwd("");
       setNewPwd("");
       setConfirmPwd("");
+      toast.success(res.message || "Đổi mật khẩu tài khoản thành công!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Đổi mật khẩu thất bại");
+    } finally {
       setIsChangingPwd(false);
-      toast.success("Đổi mật khẩu tài khoản thành công!");
-    }, 600);
+    }
   };
 
   const handleLogout = () => {
@@ -316,9 +340,9 @@ function UserProfilePage() {
             <div className="flex items-center gap-4">
               <div className="relative group">
                 <Avatar className="h-16 w-16 border-2 border-primary/20 shadow-sm">
-                  <AvatarImage src={user.avatar_url} alt={user.username} />
+                  <AvatarImage src={currentUser.avatar_url} alt={currentUser.username} />
                   <AvatarFallback className="bg-primary/20 text-lg font-bold text-primary">
-                    {user.username.slice(0, 2).toUpperCase()}
+                    {(currentUser.fullname || currentUser.username).slice(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
               </div>
@@ -326,20 +350,20 @@ function UserProfilePage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="truncate text-base font-bold text-foreground">
-                    {user.fullname || user.username}
+                    {currentUser.fullname || currentUser.username}
                   </h2>
                 </div>
-                <p className="truncate text-xs text-muted-foreground">@{user.username}</p>
+                <p className="truncate text-xs text-muted-foreground">@{currentUser.username}</p>
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <Badge variant="secondary" className="text-[10px] font-medium">
-                    {user.role_id === 1
+                    {currentUser.role_id === 1
                       ? "Admin"
-                      : user.role_id === 3
+                      : currentUser.role_id === 3
                         ? "Salon Partner"
                         : "Khách hàng"}
                   </Badge>
                   <span className="text-[11px] text-muted-foreground">
-                    • {user.gender === "male" ? "Nam" : "Nữ"}
+                    • {currentUser.gender === "female" ? "Nữ" : "Nam"}
                   </span>
                 </div>
               </div>
@@ -574,7 +598,7 @@ function UserProfilePage() {
                           />
                         ) : (
                           <div className="rounded-xl border border-border/70 bg-muted/20 px-3.5 py-2.5 text-xs font-semibold text-foreground">
-                            {user.fullname || user.username}
+                            {currentUser.fullname || currentUser.username}
                           </div>
                         )}
                       </div>
@@ -582,7 +606,7 @@ function UserProfilePage() {
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Tên đăng nhập</Label>
                         <div className="rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 text-xs font-mono text-muted-foreground">
-                          @{user.username} (Cố định)
+                          @{currentUser.username} (Cố định)
                         </div>
                       </div>
 
@@ -592,12 +616,12 @@ function UserProfilePage() {
                           <Input
                             type="email"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="rounded-xl"
+                            disabled
+                            className="rounded-xl opacity-75 cursor-not-allowed bg-muted/40"
                           />
                         ) : (
                           <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/20 px-3.5 py-2.5 text-xs text-foreground">
-                            <Mail className="h-3.5 w-3.5 text-muted-foreground" /> {user.email}
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground" /> {currentUser.email}
                           </div>
                         )}
                       </div>
@@ -608,12 +632,13 @@ function UserProfilePage() {
                           <Input
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
+                            placeholder="Nhập số điện thoại..."
                             className="rounded-xl"
                           />
                         ) : (
                           <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/20 px-3.5 py-2.5 text-xs text-foreground font-mono">
                             <Phone className="h-3.5 w-3.5 text-muted-foreground" />{" "}
-                            {user.phone || "Chưa cập nhật"}
+                            {currentUser.phone || "Chưa cập nhật"}
                           </div>
                         )}
                       </div>
@@ -627,21 +652,25 @@ function UserProfilePage() {
                             className="flex gap-4 pt-1"
                           >
                             <div className="flex items-center gap-2">
-                              <RadioGroupItem value="female" id="gender-female" />
-                              <Label htmlFor="gender-female" className="text-xs cursor-pointer">
-                                Nữ
-                              </Label>
-                            </div>
-                            <div className="flex items-center gap-2">
                               <RadioGroupItem value="male" id="gender-male" />
                               <Label htmlFor="gender-male" className="text-xs cursor-pointer">
                                 Nam
                               </Label>
                             </div>
+                            <div className="flex items-center gap-2">
+                              <RadioGroupItem value="female" id="gender-female" />
+                              <Label htmlFor="gender-female" className="text-xs cursor-pointer">
+                                Nữ
+                              </Label>
+                            </div>
                           </RadioGroup>
                         ) : (
                           <div className="rounded-xl border border-border/70 bg-muted/20 px-3.5 py-2.5 text-xs text-foreground">
-                            {user.gender === "female" ? "Nữ giới" : "Nam giới"}
+                            {currentUser.gender === "female"
+                              ? "Nữ giới"
+                              : currentUser.gender === "male"
+                                ? "Nam giới"
+                                : "Chưa cập nhật"}
                           </div>
                         )}
                       </div>
@@ -658,7 +687,7 @@ function UserProfilePage() {
                         ) : (
                           <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/20 px-3.5 py-2.5 text-xs text-foreground font-mono">
                             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />{" "}
-                            {user.dob ? formatDateDisplay(user.dob) : "Chưa cập nhật"}
+                            {currentUser.dob ? formatDateDisplay(currentUser.dob) : "Chưa cập nhật"}
                           </div>
                         )}
                       </div>
@@ -675,7 +704,7 @@ function UserProfilePage() {
                         ) : (
                           <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/20 px-3.5 py-2.5 text-xs text-foreground">
                             <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />{" "}
-                            {user.address || "Chưa cập nhật"}
+                            {currentUser.address || "Chưa cập nhật"}
                           </div>
                         )}
                       </div>
@@ -1048,7 +1077,7 @@ function UserProfilePage() {
                         <div className="rounded-2xl border border-border/80 bg-muted/20 p-3 text-xs space-y-1">
                           <p className="font-semibold text-foreground">Tài khoản xác thực</p>
                           <p className="text-muted-foreground">
-                            Tài khoản được liên kết với email: {user.email}
+                            Tài khoản được liên kết với email: {currentUser.email}
                           </p>
                         </div>
                         <div className="rounded-2xl border border-border/80 bg-muted/20 p-3 text-xs space-y-1">
