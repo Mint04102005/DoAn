@@ -1,12 +1,11 @@
 import {
   IsEmail,
-  IsEnum,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
-import { Role } from '@prisma/client';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'Email không đúng định dạng' })
@@ -18,8 +17,8 @@ export class RegisterDto {
   @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
   password: string;
 
-  @IsString({ message: 'Tên phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'Tên không được để trống' })
+  @IsString({ message: 'Họ và tên phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Họ và tên không được để trống' })
   name: string;
 
   @IsOptional()
@@ -31,8 +30,21 @@ export class RegisterDto {
   avatarUrl?: string;
 
   @IsOptional()
-  @IsEnum(Role, {
-    message: 'Vai trò phải là một trong các giá trị: USER, SALON_OWNER, ADMIN',
+  @IsIn(['USER', 'SALON_OWNER'], {
+    message: 'Vai trò chỉ có thể là USER hoặc SALON_OWNER',
   })
-  role?: Role;
+  role?: 'USER' | 'SALON_OWNER';
+
+  // Các trường bổ sung nếu role là SALON_OWNER
+  @IsOptional()
+  @IsString({ message: 'Tên Salon phải là chuỗi ký tự' })
+  salonName?: string;
+
+  @IsOptional()
+  @IsString({ message: 'Địa chỉ Salon phải là chuỗi ký tự' })
+  salonAddress?: string;
+
+  @IsOptional()
+  @IsString({ message: 'Số điện thoại Salon phải là chuỗi ký tự' })
+  salonPhone?: string;
 }
