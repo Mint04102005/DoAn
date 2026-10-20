@@ -24,7 +24,7 @@ export const Route = createFileRoute("/user/home")({
 });
 
 function HomePage() {
-  const [gender, setGender] = useState<Gender>("female");
+  const [gender, setGender] = useState<Gender | "all">("all");
   const query = useQuery({
     queryKey: ["hairstyles", gender],
     queryFn: () => hairstyleService.list({ gender }),
@@ -42,8 +42,9 @@ function HomePage() {
               Lựa chọn được yêu thích nhất tuần này.
             </p>
           </div>
-          <Tabs value={gender} onValueChange={(v) => setGender(v as Gender)}>
+          <Tabs value={gender} onValueChange={(v) => setGender(v as any)}>
             <TabsList>
+              <TabsTrigger value="all">Tất cả</TabsTrigger>
               <TabsTrigger value="female">Nữ</TabsTrigger>
               <TabsTrigger value="male">Nam</TabsTrigger>
             </TabsList>
@@ -55,11 +56,15 @@ function HomePage() {
             <CardSkeletonGrid count={8} />
           ) : query.isError ? (
             <ErrorState onRetry={() => query.refetch()} />
-          ) : (
+          ) : query.data && query.data.length > 0 ? (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {query.data!.map((h) => (
+              {query.data.map((h) => (
                 <HairstyleCard key={h.hair_id} hair={h} />
               ))}
+            </div>
+          ) : (
+            <div className="py-12 text-center text-muted-foreground">
+              Không tìm thấy kiểu tóc nào.
             </div>
           )}
         </div>

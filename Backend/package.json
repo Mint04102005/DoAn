@@ -13,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "test": "ts-node test/test-hairstyles.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

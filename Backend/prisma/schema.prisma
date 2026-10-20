@@ -99,8 +99,33 @@ model Hairstyle {
 
   // Relations
   tryOnHistories TryOnHistory[]
+  hairFace       HairFace[]
 
   @@map("hairstyles")
+}
+
+model FaceShape {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+
+  hairFace  HairFace[]
+
+  @@map("face_shapes")
+}
+
+model HairFace {
+  id               Int       @id @default(autoincrement())
+  hairstyleId      Int
+  hairstyle        Hairstyle @relation(fields: [hairstyleId], references: [id], onDelete: Cascade)
+  faceShapeId      Int
+  faceShape        FaceShape @relation(fields: [faceShapeId], references: [id], onDelete: Cascade)
+  suitabilityScore Float
+
+  @@unique([hairstyleId, faceShapeId])
+  @@index([hairstyleId])
+  @@index([faceShapeId])
+  @@map("hair_faces")
 }
 
 model Booking {
