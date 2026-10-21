@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -9,10 +9,14 @@ import {
   Camera,
   Check,
   Clock,
+  Eye,
+  EyeOff,
   FileBadge,
   FileText,
   Image as ImageIcon,
+  KeyRound,
   Loader2,
+  Lock,
   MapPin,
   MessageSquareQuote,
   Phone,
@@ -45,7 +49,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { useSalonProfile, useUpdateSalonProfile } from "@/hooks/use-salon";
+import { useChangeSalonPassword, useSalonProfile, useUpdateSalonProfile } from "@/hooks/use-salon";
 import { useAuthStore } from "@/stores/auth.store";
 import type { Salon, SalonOwner, User } from "@/types";
 
@@ -143,6 +147,23 @@ const profileSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
+const passwordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Vui lòng nhập mật khẩu hiện tại"),
+    newPassword: z.string().min(8, "Mật khẩu mới phải có tối thiểu 8 ký tự"),
+    confirmPassword: z.string().min(1, "Vui lòng xác nhận lại mật khẩu mới"),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Mật khẩu xác nhận không trùng khớp",
+    path: ["confirmPassword"],
+  })
+  .refine((data) => data.newPassword !== data.currentPassword, {
+    message: "Mật khẩu mới không được trùng với mật khẩu hiện tại",
+    path: ["newPassword"],
+  });
+
+type PasswordFormValues = z.infer<typeof passwordSchema>;
+
 function parseTags(tagStr: string): string[] {
   if (!tagStr) return [];
   return tagStr
@@ -212,9 +233,36 @@ function SalonProfileContent({
   user: User;
 }) {
   const updateProfileMutation = useUpdateSalonProfile(salon.salon_id);
+  const changePasswordMutation = useChangeSalonPassword();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const initialTags = useMemo(() => parseTags(salon.tag), [salon.tag]);
+
+  const passwordForm = useForm<PasswordFormValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  });
+
+  const onPasswordSubmit = async (values: PasswordFormValues) => {
+    try {
+      await changePasswordMutation.mutateAsync({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+        confirmPassword: values.confirmPassword,
+      });
+      passwordForm.reset();
+    } catch {
+      // Toast notification is already handled by useChangeSalonPassword onError
+    }
+  };
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -798,6 +846,153 @@ function SalonProfileContent({
                   <>
                     <Save className="mr-2 h-4 w-4" />
                     Lưu thay đổi
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardFooter>
+        </form>
+      </Card>
+
+      {/* Security & Change Password Card */}
+      <Card className="rounded-3xl border-border bg-card shadow-sm mt-6">
+        <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <KeyRound className="h-5 w-5 text-primary" /> Bảo mật & Đổi mật khẩu
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Đổi mật khẩu tài khoản Chủ Salon để đảm bảo an toàn truy cập hệ thống quản lý cửa hàng.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4 max-w-2xl">
+            {/* Input: Current Password */}
+            <div className="space-y-1.5">
+              <Label htmlFor="currentPassword" className="text-xs font-semibold">
+                Mật khẩu hiện tại <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="currentPassword"
+                  type={showCurrentPassword ? "text" : "password"}
+                  placeholder="Nhập mật khẩu hiện tại"
+                  className="rounded-xl pl-9 pr-10"
+                  autoComplete="current-password"
+                  {...passwordForm.register("currentPassword")}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowCurrentPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {passwordForm.formState.errors.currentPassword && (
+                <p className="text-xs text-destructive">
+                  {passwordForm.formState.errors.currentPassword.message}
+                </p>
+              )}
+            </div>
+
+            {/* Input: New Password */}
+            <div className="space-y-1.5">
+              <Label htmlFor="newPassword" className="text-xs font-semibold">
+                Mật khẩu mới <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="newPassword"
+                  type={showNewPassword ? "text" : "password"}
+                  placeholder="Nhập mật khẩu mới (tối thiểu 8 ký tự)"
+                  className="rounded-xl pl-9 pr-10"
+                  autoComplete="new-password"
+                  {...passwordForm.register("newPassword")}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowNewPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {passwordForm.formState.errors.newPassword ? (
+                <p className="text-xs text-destructive">
+                  {passwordForm.formState.errors.newPassword.message}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Mật khẩu phải có ít nhất 8 ký tự và khác mật khẩu hiện tại.
+                </p>
+              )}
+            </div>
+
+            {/* Input: Confirm Password */}
+            <div className="space-y-1.5">
+              <Label htmlFor="confirmPassword" className="text-xs font-semibold">
+                Xác nhận mật khẩu mới <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Nhập lại mật khẩu mới"
+                  className="rounded-xl pl-9 pr-10"
+                  autoComplete="new-password"
+                  {...passwordForm.register("confirmPassword")}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {passwordForm.formState.errors.confirmPassword && (
+                <p className="text-xs text-destructive">
+                  {passwordForm.formState.errors.confirmPassword.message}
+                </p>
+              )}
+            </div>
+          </CardContent>
+
+          <CardFooter className="flex flex-col-reverse items-center justify-between gap-3 border-t border-border/60 bg-muted/20 px-6 py-4 sm:flex-row">
+            <p className="text-xs text-muted-foreground">
+              Mật khẩu mới sẽ có hiệu lực ngay sau khi cập nhật thành công.
+            </p>
+            <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full rounded-xl sm:w-auto"
+                onClick={() => passwordForm.reset()}
+                disabled={changePasswordMutation.isPending}
+              >
+                Hủy bỏ
+              </Button>
+              <Button
+                type="submit"
+                className="w-full rounded-xl sm:w-auto"
+                disabled={changePasswordMutation.isPending}
+              >
+                {changePasswordMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Đang đổi mật khẩu...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Đổi mật khẩu
                   </>
                 )}
               </Button>
