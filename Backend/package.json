@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
-    "test": "ts-node test/test-hairstyles.ts"
+    "test": "ts-node test/test-hairstyles.ts && ts-node test/test-salons.ts",
+    "test:salons": "ts-node test/test-salons.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
