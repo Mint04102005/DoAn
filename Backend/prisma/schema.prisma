@@ -75,6 +75,8 @@ model Salon {
   images         String[]
   rating         Float       @default(5.0)
   status         SalonStatus @default(PENDING)
+  tag            String?
+  description    String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 

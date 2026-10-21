@@ -9,16 +9,12 @@ const API_BASE_URL =
 const STORAGE_KEY_SALONS = "ai_hairstyle_salons";
 const STORAGE_KEY_OWNERS = "ai_hairstyle_owners";
 
-function getStoredSalons(): Salon[] {
-  return getStorageData<Salon[]>(STORAGE_KEY_SALONS, MOCK_SALONS);
-}
-
-function saveStoredSalons(salons: Salon[]): void {
-  setStorageData(STORAGE_KEY_SALONS, salons);
-}
-
-function getStoredOwners(): SalonOwner[] {
-  return getStorageData<SalonOwner[]>(STORAGE_KEY_OWNERS, MOCK_SALON_OWNERS);
+/**
+ * Helper lấy token xác thực từ localStorage
+ */
+function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("accessToken");
 }
 
 /**
@@ -120,75 +116,137 @@ export const salonService = {
   },
 
   /**
-   * Find salon & owner info associated with a logged-in salon owner user (role_id = 3)
+   * BE-05.3: Lấy thông tin Salon của Chủ Salon đang đăng nhập
+   * GET /api/salons/owner/me
    */
-  async getSalonByUserId(userId: number): Promise<{ salon: Salon; owner: SalonOwner } | null> {
-    await randomDelay(300, 600);
-    const owners = getStoredOwners();
-    const salons = getStoredSalons();
-
-    let owner = owners.find((o) => o.user_id === userId);
-    // If owner record doesn't exist yet for this user, create or fall back to default owner 1
-    if (!owner) {
-      owner = {
-        owner_id: userId === 101 ? 1 : Date.now(),
-        user_id: userId,
-        license_no: `BL-2025-${String(1000 + (userId % 900))}`,
-        is_verified: true,
-      };
+  async getOwnerSalon(): Promise<{ salon: Salon; owner: SalonOwner } | null> {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("Vui lòng đăng nhập tài khoản Chủ Salon để tiếp tục");
     }
 
-    let salon = salons.find((s) => s.owner_id === owner!.owner_id);
-    if (!salon) {
-      // Fallback for demo user 101 to Maison Hair Studio (salon_id = 1)
-      salon = salons[0]!;
+    const res = await fetch(`${API_BASE_URL}/salons/owner/me`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (res.status === 404) {
+      return null;
     }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errorMessage = Array.isArray(data.message)
+        ? data.message.join(", ")
+        : data.message || `Lỗi tải thông tin Salon (${res.status})`;
+      throw new Error(errorMessage);
+    }
+
+    const imageUrl =
+      data.image_url ||
+      (Array.isArray(data.images) && data.images.length > 0 ? data.images[0] : "") ||
+      "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=800";
+
+    const salon: Salon = {
+      salon_id: data.id ?? data.salon_id,
+      owner_id: data.owner?.id ?? 0,
+      salonname: data.name ?? data.salonname ?? "Salon",
+      address: data.address ?? "",
+      rating: typeof data.rating === "number" ? data.rating : 5.0,
+      tag: data.tag ?? "",
+      image_url: imageUrl,
+      description: data.description ?? "",
+    };
+
+    const owner: SalonOwner = {
+      owner_id: data.owner?.id ?? 0,
+      user_id: data.owner?.id ?? 0,
+      license_no: `BL-2026-${String(1000 + (data.id ?? 1))}`,
+      is_verified: data.status === "APPROVED",
+    };
 
     return { salon, owner };
   },
 
   /**
-   * Get salon by owner_id
+   * Tương thích với interface gọi cũ: gọi thẳng getOwnerSalon từ Backend API
    */
-  async getSalonByOwnerId(ownerId: number): Promise<Salon | null> {
-    await randomDelay(200, 400);
-    const salons = getStoredSalons();
-    return salons.find((s) => s.owner_id === ownerId) ?? null;
+  async getSalonByUserId(_userId?: number): Promise<{ salon: Salon; owner: SalonOwner } | null> {
+    return this.getOwnerSalon();
   },
 
   /**
-   * Update salon profile (M9 Screen)
+   * BE-05.4: Cập nhật thông tin Salon và các thẻ thế mạnh dáng mặt
+   * PUT /api/salons/owner/me
    */
-  async updateSalonProfile(salonId: number, data: UpdateSalonProfileInput): Promise<Salon> {
-    await randomDelay(500, 900);
-
-    const salons = getStoredSalons();
-    const index = salons.findIndex((s) => s.salon_id === salonId);
-
-    if (index === -1) {
-      throw new Error("Không tìm thấy thông tin Salon");
+  async updateOwnerSalon(data: UpdateSalonProfileInput): Promise<Salon> {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("Vui lòng đăng nhập tài khoản Chủ Salon để thực hiện thao tác");
     }
 
-    const current = salons[index]!;
-    const tagString = Array.isArray(data.tag) ? data.tag.join(",") : data.tag;
+    const tagString = Array.isArray(data.tag)
+      ? data.tag.map((t) => String(t).trim()).filter(Boolean).join(", ")
+      : (data.tag || "").trim();
 
-    const updated: Salon = {
-      ...current,
+    const payload: Record<string, any> = {
       salonname: data.salonname.trim(),
       address: data.address.trim(),
       tag: tagString,
-      description:
-        data.description !== undefined ? data.description.trim() : current.description || "",
-      image_url:
-        data.image_url !== undefined && data.image_url.trim() !== ""
-          ? data.image_url.trim()
-          : current.image_url,
     };
 
-    const nextSalons = [...salons];
-    nextSalons[index] = updated;
-    saveStoredSalons(nextSalons);
+    if (data.description !== undefined) {
+      payload.description = data.description.trim();
+    }
 
-    return updated;
+    if (data.image_url !== undefined && data.image_url.trim()) {
+      payload.image_url = data.image_url.trim();
+    }
+
+    const res = await fetch(`${API_BASE_URL}/salons/owner/me`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const resData = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errorMessage = Array.isArray(resData.message)
+        ? resData.message.join(", ")
+        : resData.message || `Cập nhật thông tin Salon thất bại (${res.status})`;
+      throw new Error(errorMessage);
+    }
+
+    const imageUrl =
+      resData.image_url ||
+      (Array.isArray(resData.images) && resData.images.length > 0 ? resData.images[0] : "") ||
+      data.image_url ||
+      "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=800";
+
+    return {
+      salon_id: resData.id ?? resData.salon_id,
+      owner_id: resData.owner?.id ?? 0,
+      salonname: resData.name ?? resData.salonname ?? payload.salonname,
+      address: resData.address ?? payload.address,
+      rating: typeof resData.rating === "number" ? resData.rating : 5.0,
+      tag: resData.tag ?? payload.tag,
+      image_url: imageUrl,
+      description: resData.description ?? payload.description ?? "",
+    };
+  },
+
+  /**
+   * Tương thích với interface gọi cũ: gọi thẳng updateOwnerSalon từ Backend API
+   */
+  async updateSalonProfile(_salonId: number, data: UpdateSalonProfileInput): Promise<Salon> {
+    return this.updateOwnerSalon(data);
   },
 };

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -159,11 +159,34 @@ function SalonProfilePage() {
     return <LoadingState label="Đang tải thông tin hồ sơ Salon..." />;
   }
 
-  if (profileQuery.isError || !profileQuery.data?.salon || !user) {
+  if (user && user.role !== "SALON_OWNER" && user.role_id !== 3) {
     return (
       <ErrorState
-        title="Không tìm thấy thông tin Salon"
-        description="Không thể tải hồ sơ salon của bạn. Vui lòng thử lại."
+        title="Không có quyền truy cập"
+        description="Trang quản lý hồ sơ này chỉ dành riêng cho tài khoản đối tác Chủ Salon."
+      />
+    );
+  }
+
+  if (profileQuery.isError) {
+    return (
+      <ErrorState
+        title="Không thể tải thông tin Salon"
+        description={
+          profileQuery.error instanceof Error
+            ? profileQuery.error.message
+            : "Đã xảy ra lỗi khi tải hồ sơ salon của bạn. Vui lòng thử lại sau."
+        }
+        onRetry={() => profileQuery.refetch()}
+      />
+    );
+  }
+
+  if (!profileQuery.data?.salon || !user) {
+    return (
+      <ErrorState
+        title="Chưa có thông tin Salon"
+        description="Tài khoản này chưa có thông tin Salon trên hệ thống. Vui lòng đăng ký hoặc liên hệ ban quản trị để được hỗ trợ."
         onRetry={() => profileQuery.refetch()}
       />
     );
@@ -171,6 +194,7 @@ function SalonProfilePage() {
 
   return (
     <SalonProfileContent
+      key={`${profileQuery.data.salon.salon_id}_${profileQuery.data.salon.salonname}_${profileQuery.data.salon.tag}`}
       salon={profileQuery.data.salon}
       owner={profileQuery.data.owner}
       user={user}
@@ -190,18 +214,11 @@ function SalonProfileContent({
   const updateProfileMutation = useUpdateSalonProfile(salon.salon_id);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const initialTags = parseTags(salon.tag);
+  const initialTags = useMemo(() => parseTags(salon.tag), [salon.tag]);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      salonname: salon.salonname,
-      address: salon.address,
-      tag: initialTags,
-      description: salon.description || "",
-      image_url: salon.image_url || "",
-    },
-    values: {
       salonname: salon.salonname,
       address: salon.address,
       tag: initialTags,
@@ -670,8 +687,16 @@ function SalonProfileContent({
                   return (
                     <div
                       key={option.value}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleToggleTag(option.value)}
-                      className={`cursor-pointer rounded-2xl border p-3.5 transition-all ${
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleToggleTag(option.value);
+                        }
+                      }}
+                      className={`cursor-pointer select-none rounded-2xl border p-3.5 transition-all ${
                         isChecked
                           ? "border-primary bg-primary/5 shadow-xs ring-1 ring-primary/40"
                           : "border-border bg-card hover:bg-muted/30"
@@ -679,11 +704,15 @@ function SalonProfileContent({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5">
-                          <Checkbox
-                            checked={isChecked}
-                            onCheckedChange={() => handleToggleTag(option.value)}
-                            className="rounded-md"
-                          />
+                          <div
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors ${
+                              isChecked
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-muted-foreground/40 bg-transparent"
+                            }`}
+                          >
+                            {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
+                          </div>
                           <span className="text-xs font-semibold text-foreground">
                             {option.label}
                           </span>
