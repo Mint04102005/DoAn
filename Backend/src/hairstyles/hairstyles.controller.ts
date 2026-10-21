@@ -24,6 +24,19 @@ export class HairstylesController {
   }
 
   /**
+   * Endpoint công khai lọc kiểu tóc theo dáng khuôn mặt
+   * GET /api/hairstyles/by-face-shape/:shapeId
+   * Không yêu cầu JWT token / authentication
+   */
+  @Get('by-face-shape/:shapeId')
+  async findByFaceShape(@Param('shapeId', ParseIntPipe) shapeId: number) {
+    if (shapeId <= 0) {
+      throw new BadRequestException('ID dáng khuôn mặt phải là số nguyên dương');
+    }
+    return this.hairstylesService.findByFaceShape(shapeId);
+  }
+
+  /**
    * Endpoint công khai lấy chi tiết kiểu tóc & độ phù hợp các dáng mặt
    * GET /api/hairstyles/:id
    * Không yêu cầu JWT token / authentication

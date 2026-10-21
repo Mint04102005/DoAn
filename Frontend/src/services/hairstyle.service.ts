@@ -19,6 +19,28 @@ export function transformBackendHairstyle(raw: any): Hairstyle {
   };
 }
 
+export interface HairstyleDetail {
+  id: number;
+  name: string;
+  description?: string;
+  gender: string;
+  hairType?: string;
+  imageUrl: string;
+  tags?: string[];
+  faceShapes?: string[];
+  createdAt?: string;
+  hairFace: Array<{
+    id: number;
+    hairstyleId: number;
+    faceShapeId: number;
+    suitabilityScore: number;
+    faceShape: {
+      id: number;
+      name: string;
+    };
+  }>;
+}
+
 export const hairstyleService = {
   /**
    * Gọi API công khai GET /api/hairstyles
@@ -53,12 +75,78 @@ export const hairstyleService = {
     }
   },
 
+
+  /**
+   * Lấy chi tiết đầy đủ kiểu tóc kèm danh sách dáng mặt và điểm phù hợp: GET /api/hairstyles/:id
+   */
+  async getDetail(id: number): Promise<HairstyleDetail | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/hairstyles/${id}`);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      return await res.json();
+    } catch (error) {
+      console.warn("Không thể lấy chi tiết kiểu tóc từ Backend API:", error);
+      return null;
+    }
+  },
+
+  /**
+   * Gọi API công khai GET /api/hairstyles/:id lấy chi tiết kiểu tóc
+   */
   async getById(id: number): Promise<Hairstyle | null> {
     try {
-      const list = await this.list();
-      return list.find((h) => h.hair_id === id) ?? null;
-    } catch {
+      const res = await fetch(`${API_BASE_URL}/hairstyles/${id}`);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const raw = await res.json();
+      return transformBackendHairstyle(raw);
+    } catch (error) {
+      console.warn("Không thể lấy chi tiết kiểu tóc từ Backend API, dùng fallback:", error);
       return MOCK_HAIRSTYLES.find((h) => h.hair_id === id) ?? null;
+    }
+  },
+
+  /**
+   * Gọi API công khai GET /api/hairstyles/by-face-shape/:shapeId lọc kiểu tóc theo dáng mặt
+   */
+  async listByFaceShape(
+    shapeId: number,
+    filter?: { gender?: Gender | "all" | string },
+  ): Promise<{ hairstyle: Hairstyle; score: number }[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/hairstyles/by-face-shape/${shapeId}`);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const rawList = await res.json();
+      if (!Array.isArray(rawList)) return [];
+
+      const result = rawList.map((item: any) => {
+        const h = transformBackendHairstyle(item.hairstyle);
+        const score = Math.round(
+          typeof item.suitabilityScore === "number"
+            ? item.suitabilityScore > 1
+              ? item.suitabilityScore
+              : item.suitabilityScore * 100
+            : 80,
+        );
+        return {
+          hairstyle: h,
+          score,
+        };
+      });
+
+      if (filter?.gender && filter.gender !== "all") {
+        return result.filter((item) => item.hairstyle.gender === filter.gender);
+      }
+
+      return result;
+    } catch (error) {
+      console.warn("Không thể lọc kiểu tóc theo dáng mặt từ Backend API:", error);
+      return [];
     }
   },
 };

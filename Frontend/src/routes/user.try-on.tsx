@@ -9,6 +9,7 @@ import {
   Download,
   Eye,
   ImagePlus,
+  Info,
   Loader2,
   MapPin,
   RefreshCw,
@@ -21,6 +22,7 @@ import {
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { HairstyleCard } from "@/components/cards/HairstyleCard";
+import { HairstyleDetailModal } from "@/components/modals/HairstyleDetailModal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -90,6 +92,7 @@ export function UnifiedAiStudioPage({
   // === TRY-ON STATE ===
   const [selectedHairId, setSelectedHairId] = useState<number | null>(search.hair_id ?? null);
   const [tryOnOutput, setTryOnOutput] = useState<string | null>(null);
+  const [viewingDetailHairId, setViewingDetailHairId] = useState<number | null>(null);
 
   // Query all hairstyles
   const hairsQuery = useQuery({
@@ -111,6 +114,13 @@ export function UnifiedAiStudioPage({
   }, [search.tab]);
 
   const selectedHair = hairsQuery.data?.find((h) => h.hair_id === selectedHairId);
+
+  // Query chi tiết mẫu tóc đang chọn từ Backend API (BE-03.2)
+  const selectedHairDetailQuery = useQuery({
+    queryKey: ["hairstyle-detail", selectedHairId],
+    queryFn: () => (selectedHairId ? hairstyleService.getDetail(selectedHairId) : null),
+    enabled: !!selectedHairId,
+  });
 
   // --- Recommendation Mutation ---
   const analyzeMutation = useMutation({
@@ -434,7 +444,10 @@ export function UnifiedAiStudioPage({
                             className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-xs transition-all hover:border-primary/50 hover:shadow-md"
                           >
                             <div className="space-y-3">
-                              <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
+                              <div
+                                className="relative aspect-square overflow-hidden rounded-xl bg-muted cursor-pointer group/img"
+                                onClick={() => setViewingDetailHairId(item.hairstyle.hair_id)}
+                              >
                                 <img
                                   src={item.hairstyle.image_url}
                                   alt={item.hairstyle.hair_name}
@@ -443,9 +456,15 @@ export function UnifiedAiStudioPage({
                                 <Badge className="absolute top-2 right-2 bg-black/70 font-mono text-xs text-white backdrop-blur">
                                   Match {item.score}%
                                 </Badge>
+                                <span className="absolute bottom-2 left-2 rounded-full bg-black/60 backdrop-blur-sm px-2 py-0.5 text-[10px] text-white flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Info className="h-2.5 w-2.5" /> Chi tiết
+                                </span>
                               </div>
-                              <div>
-                                <h4 className="font-semibold text-sm text-foreground">
+                              <div
+                                className="cursor-pointer"
+                                onClick={() => setViewingDetailHairId(item.hairstyle.hair_id)}
+                              >
+                                <h4 className="font-semibold text-sm text-foreground hover:text-primary transition-colors flex items-center justify-between">
                                   {item.hairstyle.hair_name}
                                 </h4>
                                 <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
@@ -555,23 +574,74 @@ export function UnifiedAiStudioPage({
 
                   {/* Selected Hairstyle Preview */}
                   {selectedHair && (
-                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-muted/30 p-3">
-                      <img
-                        src={selectedHair.image_url}
-                        alt={selectedHair.hair_name}
-                        className="h-14 w-14 rounded-xl object-cover"
-                      />
-                      <div className="min-w-0 flex-1 text-xs">
-                        <p className="font-semibold text-foreground truncate">
-                          {selectedHair.hair_name}
-                        </p>
-                        <p className="text-muted-foreground line-clamp-1">
-                          {selectedHair.description || "Phong cách thời thượng"}
-                        </p>
-                        <Badge variant="outline" className="mt-1 text-[10px]">
-                          {selectedHair.gender === "female" ? "Dành cho Nữ" : "Dành cho Nam"}
-                        </Badge>
+                    <div className="rounded-2xl border border-border bg-card p-3.5 space-y-2.5 shadow-xs">
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={selectedHair.image_url}
+                          alt={selectedHair.hair_name}
+                          className="h-16 w-16 rounded-xl object-cover border border-border/60 shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
+                          onClick={() => setViewingDetailHairId(selectedHair.hair_id)}
+                        />
+                        <div className="min-w-0 flex-1 text-xs">
+                          <div className="flex items-center justify-between gap-1">
+                            <h4
+                              className="font-semibold text-sm text-foreground truncate cursor-pointer hover:text-primary transition-colors"
+                              onClick={() => setViewingDetailHairId(selectedHair.hair_id)}
+                            >
+                              {selectedHair.hair_name}
+                            </h4>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[11px] px-2 text-primary hover:text-primary gap-1 shrink-0 rounded-full"
+                              onClick={() => setViewingDetailHairId(selectedHair.hair_id)}
+                            >
+                              <Info className="h-3 w-3" /> Chi tiết
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <Badge variant="outline" className="text-[10px]">
+                              {selectedHair.gender === "female" ? "Dành cho Nữ" : "Dành cho Nam"}
+                            </Badge>
+                            {selectedHairDetailQuery.data?.hairType && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {selectedHairDetailQuery.data.hairType}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
                       </div>
+
+                      {/* Hiển thị đầy đủ mô tả kiểu tóc không bị cắt ngắn */}
+                      <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-muted-foreground leading-relaxed">
+                        <span className="font-semibold text-foreground mr-1">Mô tả:</span>
+                        {selectedHairDetailQuery.data?.description || selectedHair.description || "Phong cách thời thượng"}
+                      </div>
+
+                      {/* Hiển thị các dáng mặt phù hợp từ database */}
+                      {selectedHairDetailQuery.data?.hairFace && selectedHairDetailQuery.data.hairFace.length > 0 && (
+                        <div className="space-y-1.5 pt-0.5">
+                          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 text-primary" /> Phù hợp nhất với dáng mặt:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedHairDetailQuery.data.hairFace.map((hf) => {
+                              const scorePercent = Math.round(
+                                hf.suitabilityScore > 1 ? hf.suitabilityScore : hf.suitabilityScore * 100,
+                              );
+                              return (
+                                <Badge
+                                  key={hf.id}
+                                  variant="secondary"
+                                  className="text-[11px] font-normal py-0.5 px-2 bg-primary/10 text-primary border border-primary/20"
+                                >
+                                  {hf.faceShape.name} ({scorePercent}%)
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -709,6 +779,13 @@ export function UnifiedAiStudioPage({
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modal chi tiết mẫu tóc & độ phù hợp */}
+      <HairstyleDetailModal
+        hairId={viewingDetailHairId}
+        isOpen={viewingDetailHairId !== null}
+        onClose={() => setViewingDetailHairId(null)}
+      />
     </div>
   );
 }

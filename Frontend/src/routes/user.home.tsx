@@ -2,11 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Camera, MapPin, Sparkles } from "lucide-react";
+import { ArrowRight, Camera, MapPin, Sparkles, UserCheck } from "lucide-react";
 import { HairstyleCard } from "@/components/cards/HairstyleCard";
 import { CardSkeletonGrid, ErrorState } from "@/components/shared/StateViews";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { faceShapeService } from "@/services/face-shape.service";
 import { hairstyleService } from "@/services/hairstyle.service";
 import type { Gender } from "@/types";
 
@@ -25,9 +26,25 @@ export const Route = createFileRoute("/user/home")({
 
 function HomePage() {
   const [gender, setGender] = useState<Gender | "all">("all");
+  const [selectedShapeId, setSelectedShapeId] = useState<number | "all">("all");
+
+  // Query danh sách dáng mặt chuẩn hóa từ Backend API (BE-03.3)
+  const faceShapesQuery = useQuery({
+    queryKey: ["face-shapes"],
+    queryFn: () => faceShapeService.list(),
+  });
+
+  // Query danh sách kiểu tóc hoặc lọc theo dáng mặt (BE-03.1 / BE-03.4)
   const query = useQuery({
-    queryKey: ["hairstyles", gender],
-    queryFn: () => hairstyleService.list({ gender }),
+    queryKey: ["hairstyles", gender, selectedShapeId],
+    queryFn: async () => {
+      if (selectedShapeId === "all") {
+        const list = await hairstyleService.list({ gender });
+        return list.map((h) => ({ hairstyle: h, score: undefined }));
+      } else {
+        return hairstyleService.listByFaceShape(selectedShapeId, { gender });
+      }
+    },
   });
 
   return (
@@ -39,7 +56,7 @@ function HomePage() {
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">Kiểu tóc nổi bật</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Lựa chọn được yêu thích nhất tuần này.
+              Lựa chọn được yêu thích nhất tuần này theo giới tính và dáng mặt.
             </p>
           </div>
           <Tabs value={gender} onValueChange={(v) => setGender(v as any)}>
@@ -51,6 +68,32 @@ function HomePage() {
           </Tabs>
         </div>
 
+        {/* Bộ lọc theo dáng khuôn mặt (Face Shape Filter) */}
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground mr-1">
+            Dáng mặt:
+          </span>
+          <Button
+            size="sm"
+            variant={selectedShapeId === "all" ? "default" : "outline"}
+            className="rounded-full text-xs h-7 px-3"
+            onClick={() => setSelectedShapeId("all")}
+          >
+            Tất cả dáng mặt
+          </Button>
+          {faceShapesQuery.data?.map((shape) => (
+            <Button
+              key={shape.id}
+              size="sm"
+              variant={selectedShapeId === shape.id ? "default" : "outline"}
+              className="rounded-full text-xs h-7 px-3"
+              onClick={() => setSelectedShapeId(shape.id)}
+            >
+              {shape.name}
+            </Button>
+          ))}
+        </div>
+
         <div className="mt-6">
           {query.isLoading ? (
             <CardSkeletonGrid count={8} />
@@ -58,13 +101,17 @@ function HomePage() {
             <ErrorState onRetry={() => query.refetch()} />
           ) : query.data && query.data.length > 0 ? (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {query.data.map((h) => (
-                <HairstyleCard key={h.hair_id} hair={h} />
+              {query.data.map((item) => (
+                <HairstyleCard
+                  key={item.hairstyle.hair_id}
+                  hair={item.hairstyle}
+                  score={item.score}
+                />
               ))}
             </div>
           ) : (
             <div className="py-12 text-center text-muted-foreground">
-              Không tìm thấy kiểu tóc nào.
+              Không tìm thấy kiểu tóc nào phù hợp với bộ lọc hiện tại.
             </div>
           )}
         </div>
