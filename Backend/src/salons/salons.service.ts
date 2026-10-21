@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, Role, SalonStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GetSalonsDto } from './dto/get-salons.dto';
+import { UpdateSalonDto } from './dto/update-salon.dto';
 
 @Injectable()
 export class SalonsService {
@@ -13,22 +18,22 @@ export class SalonsService {
    * Hỗ trợ tìm kiếm theo tên Salon, địa chỉ, thẻ thế mạnh
    */
   async findAll(query: GetSalonsDto) {
-    // 1. Kiểm tra bộ lọc tag:
-    // Schema hiện tại của model Salon không có cột tag/tags/faceShapes.
-    // Nếu client truyền một tag thực sự (chuỗi không rỗng), AND logic với tập dữ liệu thực tế
-    // sẽ cho kết quả 0 bản ghi, trả về [] theo đúng yêu cầu kiểm thử và không sửa đổi schema tuỳ tiện.
-    const trimmedTag = query.tag?.trim();
-    if (trimmedTag) {
-      return [];
-    }
-
-    // 2. Xây dựng điều kiện lọc bắt buộc: chỉ Salon đã APPROVED và có chủ tiệm hợp lệ
+    // 1. Xây dựng điều kiện lọc bắt buộc: chỉ Salon đã APPROVED và có chủ tiệm hợp lệ
     const where: Prisma.SalonWhereInput = {
       status: SalonStatus.APPROVED,
       owner: {
         role: Role.SALON_OWNER,
       },
     };
+
+    // 2. Lọc theo tag (thế mạnh dáng mặt)
+    const trimmedTag = query.tag?.trim();
+    if (trimmedTag) {
+      where.tag = {
+        contains: trimmedTag,
+        mode: 'insensitive',
+      };
+    }
 
     // 3. Lọc theo tên Salon (search)
     const trimmedSearch = query.search?.trim();
@@ -72,6 +77,8 @@ export class SalonsService {
         images: true,
         rating: true,
         status: true,
+        tag: true,
+        description: true,
         createdAt: true,
         owner: {
           select: {
@@ -98,7 +105,9 @@ export class SalonsService {
       image_url: salon.images?.[0] || '',
       rating: salon.rating,
       status: salon.status,
-      tag: '',
+      tag: salon.tag || '',
+      tags: salon.tag ? salon.tag.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      description: salon.description || '',
       createdAt: salon.createdAt,
       owner: salon.owner,
     }));
@@ -120,6 +129,8 @@ export class SalonsService {
         images: true,
         rating: true,
         status: true,
+        tag: true,
+        description: true,
         createdAt: true,
         owner: {
           select: {
@@ -151,7 +162,9 @@ export class SalonsService {
       image_url: salon.images?.[0] || '',
       rating: salon.rating,
       status: salon.status,
-      tag: '',
+      tag: salon.tag || '',
+      tags: salon.tag ? salon.tag.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      description: salon.description || '',
       createdAt: salon.createdAt,
       owner: {
         id: salon.owner.id,
@@ -159,6 +172,175 @@ export class SalonsService {
         phone: salon.owner.phone,
         email: salon.owner.email,
         avatarUrl: salon.owner.avatarUrl,
+      },
+    };
+  }
+
+  /**
+   * BE-05.3: API lấy thông tin Salon của Chủ Salon đang đăng nhập
+   */
+  async getOwnerSalon(ownerId: number) {
+    const salon = await this.prisma.salon.findFirst({
+      where: { ownerId },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        operatingHours: true,
+        images: true,
+        rating: true,
+        status: true,
+        tag: true,
+        description: true,
+        createdAt: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            avatarUrl: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!salon) {
+      throw new NotFoundException('Không tìm thấy thông tin Salon của tài khoản này');
+    }
+
+    return {
+      id: salon.id,
+      salon_id: salon.id,
+      name: salon.name,
+      salonname: salon.name,
+      address: salon.address,
+      phone: salon.phone,
+      operatingHours: salon.operatingHours,
+      images: salon.images,
+      image_url: salon.images?.[0] || '',
+      rating: salon.rating,
+      status: salon.status,
+      tag: salon.tag || '',
+      tags: salon.tag ? salon.tag.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      description: salon.description || '',
+      createdAt: salon.createdAt,
+      owner: {
+        id: salon.owner.id,
+        name: salon.owner.name,
+        phone: salon.owner.phone,
+        email: salon.owner.email,
+        avatarUrl: salon.owner.avatarUrl,
+      },
+    };
+  }
+
+  /**
+   * BE-05.4: API cập nhật thông tin Salon và các thẻ thế mạnh dáng mặt
+   */
+  async updateOwnerSalon(ownerId: number, dto: UpdateSalonDto) {
+    const salon = await this.prisma.salon.findFirst({
+      where: { ownerId },
+    });
+
+    if (!salon) {
+      throw new NotFoundException('Không tìm thấy thông tin Salon của tài khoản này');
+    }
+
+    const updateData: Prisma.SalonUpdateInput = {};
+
+    // 1. Tên Salon
+    const rawName = dto.salonname !== undefined ? dto.salonname : dto.name;
+    if (rawName !== undefined) {
+      const trimmedName = rawName.trim();
+      if (!trimmedName) {
+        throw new BadRequestException('Tên Salon không được để trống');
+      }
+      updateData.name = trimmedName;
+    }
+
+    // 2. Địa chỉ
+    if (dto.address !== undefined) {
+      const trimmedAddress = dto.address.trim();
+      if (!trimmedAddress) {
+        throw new BadRequestException('Địa chỉ Salon không được để trống');
+      }
+      updateData.address = trimmedAddress;
+    }
+
+    // 3. Tag thế mạnh dáng mặt
+    const rawTag = dto.tag !== undefined ? dto.tag : dto.tags;
+    if (rawTag !== undefined) {
+      let formattedTag = '';
+      if (Array.isArray(rawTag)) {
+        formattedTag = rawTag.map((t) => String(t).trim()).filter(Boolean).join(', ');
+      } else if (typeof rawTag === 'string') {
+        formattedTag = rawTag.split(',').map((t) => t.trim()).filter(Boolean).join(', ');
+      }
+      updateData.tag = formattedTag;
+    }
+
+    // 4. Mô tả
+    if (dto.description !== undefined) {
+      updateData.description = dto.description.trim();
+    }
+
+    // 5. Ảnh đại diện nếu có
+    if (dto.image_url !== undefined && dto.image_url.trim()) {
+      updateData.images = [dto.image_url.trim()];
+    }
+
+    const updated = await this.prisma.salon.update({
+      where: { id: salon.id },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        operatingHours: true,
+        images: true,
+        rating: true,
+        status: true,
+        tag: true,
+        description: true,
+        createdAt: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return {
+      id: updated.id,
+      salon_id: updated.id,
+      name: updated.name,
+      salonname: updated.name,
+      address: updated.address,
+      phone: updated.phone,
+      operatingHours: updated.operatingHours,
+      images: updated.images,
+      image_url: updated.images?.[0] || '',
+      rating: updated.rating,
+      status: updated.status,
+      tag: updated.tag || '',
+      tags: updated.tag ? updated.tag.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      description: updated.description || '',
+      createdAt: updated.createdAt,
+      owner: {
+        id: updated.owner.id,
+        name: updated.owner.name,
+        phone: updated.owner.phone,
+        email: updated.owner.email,
+        avatarUrl: updated.owner.avatarUrl,
       },
     };
   }

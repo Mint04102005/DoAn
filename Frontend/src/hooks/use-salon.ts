@@ -8,8 +8,7 @@ export function useSalonProfile(userId?: number) {
   return useQuery({
     queryKey: ["salon-profile", userId],
     queryFn: () => {
-      if (!userId) return null;
-      return salonService.getSalonByUserId(userId);
+      return salonService.getOwnerSalon();
     },
     enabled: !!userId,
   });
@@ -55,13 +54,14 @@ export function useUpdateSalonProfile(salonId?: number) {
 
   return useMutation({
     mutationFn: (data: UpdateSalonProfileInput) => {
-      if (!salonId) throw new Error("Salon ID is required");
-      return salonService.updateSalonProfile(salonId, data);
+      return salonService.updateOwnerSalon(data);
     },
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["salon-profile"] });
       queryClient.invalidateQueries({ queryKey: ["salons"] });
-      queryClient.setQueryData(["salon", salonId], updated);
+      if (salonId) {
+        queryClient.setQueryData(["salon", salonId], updated);
+      }
       toast.success("Đã cập nhật thông tin Salon thành công");
     },
     onError: (err: Error) => {
