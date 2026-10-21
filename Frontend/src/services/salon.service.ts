@@ -1,6 +1,10 @@
 import { randomDelay } from "@/lib/delay";
 import { MOCK_SALONS, MOCK_SALON_OWNERS, getStorageData, setStorageData } from "@/lib/mock-data";
-import type { Salon, SalonOwner, UpdateSalonProfileInput } from "@/types";
+import type { BackendSalonItem, Salon, SalonDetailData, SalonFilterParams, SalonOwner, UpdateSalonProfileInput } from "@/types";
+
+const API_BASE_URL =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
+  "http://localhost:5000/api";
 
 const STORAGE_KEY_SALONS = "ai_hairstyle_salons";
 const STORAGE_KEY_OWNERS = "ai_hairstyle_owners";
@@ -17,30 +21,102 @@ function getStoredOwners(): SalonOwner[] {
   return getStorageData<SalonOwner[]>(STORAGE_KEY_OWNERS, MOCK_SALON_OWNERS);
 }
 
+/**
+ * Chuyển đổi dữ liệu Salon từ Backend API sang format hiển thị tương thích của Frontend
+ */
+export function transformBackendSalon(raw: BackendSalonItem): Salon {
+  const imageUrl =
+    raw.image_url ||
+    (Array.isArray(raw.images) && raw.images.length > 0 ? raw.images[0] : "") ||
+    "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=800";
+  return {
+    salon_id: raw.id ?? raw.salon_id ?? 0,
+    owner_id: raw.owner?.id ?? raw.ownerId ?? raw.owner_id ?? 0,
+    salonname: raw.name ?? raw.salonname ?? "Salon",
+    address: raw.address ?? "",
+    rating: typeof raw.rating === "number" ? raw.rating : 5.0,
+    tag: raw.tag ?? "",
+    image_url: imageUrl,
+    description: raw.description ?? raw.operatingHours ?? "",
+  };
+}
+
 export const salonService = {
   /**
-   * Search salons by keyword (Phase 1)
+   * Khám phá danh sách Salon từ Backend API (BE-05.1: GET /api/salons)
    */
-  async search(q?: string): Promise<Salon[]> {
-    await randomDelay(300, 700);
-    const salons = getStoredSalons();
-    if (!q) return salons;
-    const k = q.toLowerCase();
-    return salons.filter(
-      (s) =>
-        s.salonname.toLowerCase().includes(k) ||
-        s.address.toLowerCase().includes(k) ||
-        s.tag.toLowerCase().includes(k),
-    );
+  async list(filters?: SalonFilterParams): Promise<Salon[]> {
+    const params = new URLSearchParams();
+    if (filters?.search?.trim()) {
+      params.append("search", filters.search.trim());
+    }
+    if (filters?.address?.trim()) {
+      params.append("address", filters.address.trim());
+    }
+    if (filters?.tag?.trim()) {
+      params.append("tag", filters.tag.trim());
+    }
+
+    const queryString = params.toString();
+    const url = `${API_BASE_URL}/salons${queryString ? `?${queryString}` : ""}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Không thể tải danh sách Salon (HTTP ${res.status})`);
+    }
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.map(transformBackendSalon);
   },
 
   /**
-   * Get salon by ID
+   * Tìm kiếm Salon theo từ khóa
    */
-  async getById(id: number): Promise<Salon | null> {
-    await randomDelay(200, 400);
-    const salons = getStoredSalons();
-    return salons.find((s) => s.salon_id === id) ?? null;
+  async search(q?: string): Promise<Salon[]> {
+    return this.list({ search: q });
+  },
+
+  /**
+   * Lấy chi tiết Salon từ Backend API (BE-05.2: GET /api/salons/:id)
+   */
+  async getById(id: number): Promise<SalonDetailData | null> {
+    const res = await fetch(`${API_BASE_URL}/salons/${id}`);
+    if (res.status === 404) {
+      return null;
+    }
+    if (!res.ok) {
+      throw new Error(`Không thể lấy thông tin chi tiết Salon (HTTP ${res.status})`);
+    }
+    const raw = await res.json();
+    const imageUrl =
+      raw.image_url ||
+      (Array.isArray(raw.images) && raw.images.length > 0 ? raw.images[0] : "") ||
+      "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=800";
+
+    return {
+      id: raw.id,
+      salon_id: raw.id,
+      name: raw.name || raw.salonname || "Salon",
+      salonname: raw.name || raw.salonname || "Salon",
+      address: raw.address || "",
+      phone: raw.phone || "",
+      operatingHours: raw.operatingHours || null,
+      images: Array.isArray(raw.images) ? raw.images : [],
+      image_url: imageUrl,
+      rating: typeof raw.rating === "number" ? raw.rating : 5.0,
+      status: raw.status || "APPROVED",
+      tag: raw.tag || "",
+      description: raw.description || "",
+      createdAt: raw.createdAt,
+      owner: raw.owner
+        ? {
+            id: raw.owner.id,
+            name: raw.owner.name,
+            phone: raw.owner.phone,
+            email: raw.owner.email,
+            avatarUrl: raw.owner.avatarUrl,
+          }
+        : undefined,
+    };
   },
 
   /**

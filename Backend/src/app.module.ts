@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { FaceShapesModule } from './face-shapes/face-shapes.module';
 import { HairstylesModule } from './hairstyles/hairstyles.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SalonsModule } from './salons/salons.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     HairstylesModule,
     FaceShapesModule,
+    SalonsModule,
   ],
 })
 export class AppModule {}

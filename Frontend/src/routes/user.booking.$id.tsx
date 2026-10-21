@@ -103,13 +103,19 @@ function BookingPage() {
                 <MapPin className="h-4 w-4" /> {salon.address}
               </span>
             </div>
-            <div className="flex flex-wrap gap-1">
-              {salon.tag.split(",").map((t) => (
-                <Badge key={t} variant="secondary" className="text-xs">
-                  {t.trim()}
-                </Badge>
-              ))}
-            </div>
+            {salon.tag ? (
+              <div className="flex flex-wrap gap-1">
+                {salon.tag
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean)
+                  .map((t) => (
+                    <Badge key={t} variant="secondary" className="text-xs">
+                      {t}
+                    </Badge>
+                  ))}
+              </div>
+            ) : null}
           </div>
         </div>
 

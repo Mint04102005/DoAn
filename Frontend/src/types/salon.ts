@@ -46,3 +46,60 @@ export interface UpdateSalonProfileInput {
   description?: string;
   image_url?: string;
 }
+
+export interface SalonFilterParams {
+  search?: string;
+  address?: string;
+  tag?: string;
+}
+
+export interface SalonDetailData {
+  id: number;
+  salon_id: number;
+  name: string;
+  salonname: string;
+  address: string;
+  phone: string;
+  operatingHours?: string | null;
+  images: string[];
+  image_url: string;
+  rating: number;
+  status: string;
+  tag?: string;
+  description?: string;
+  createdAt?: string;
+  owner?: {
+    id: number;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+  };
+}
+
+export interface BackendSalonItem {
+  id?: number;
+  salon_id?: number;
+  name?: string;
+  salonname?: string;
+  address?: string;
+  phone?: string;
+  operatingHours?: string | null;
+  images?: string[];
+  image_url?: string;
+  rating?: number;
+  status?: string;
+  tag?: string;
+  description?: string;
+  createdAt?: string;
+  ownerId?: number;
+  owner_id?: number;
+  owner?: {
+    id: number;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+  };
+}
+
