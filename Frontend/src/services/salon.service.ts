@@ -1,6 +1,6 @@
 import { randomDelay } from "@/lib/delay";
 import { MOCK_SALONS, MOCK_SALON_OWNERS, getStorageData, setStorageData } from "@/lib/mock-data";
-import type { BackendSalonItem, Salon, SalonDetailData, SalonFilterParams, SalonOwner, UpdateSalonProfileInput } from "@/types";
+import type { BackendSalonItem, ChangeSalonPasswordInput, Salon, SalonDetailData, SalonFilterParams, SalonOwner, UpdateSalonProfileInput } from "@/types";
 
 const API_BASE_URL =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
@@ -249,4 +249,36 @@ export const salonService = {
   async updateSalonProfile(_salonId: number, data: UpdateSalonProfileInput): Promise<Salon> {
     return this.updateOwnerSalon(data);
   },
+
+  /**
+   * BE-05.5: Đổi mật khẩu cho Chủ Salon
+   * PATCH /api/salons/owner/me/password
+   */
+  async changePassword(data: ChangeSalonPasswordInput): Promise<{ message: string }> {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("Vui lòng đăng nhập tài khoản Chủ Salon để thực hiện thao tác");
+    }
+
+    const res = await fetch(`${API_BASE_URL}/salons/owner/me/password`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    const resData = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errorMessage = Array.isArray(resData.message)
+        ? resData.message.join(", ")
+        : resData.message || `Đổi mật khẩu thất bại (${res.status})`;
+      throw new Error(errorMessage);
+    }
+
+    return resData;
+  },
 };
+

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { bookingService } from "@/services/booking.service";
 import { salonService } from "@/services/salon.service";
-import type { BookingFilters, BookingStatus, UpdateSalonProfileInput } from "@/types";
+import type { BookingFilters, BookingStatus, ChangeSalonPasswordInput, UpdateSalonProfileInput } from "@/types";
 
 export function useSalonProfile(userId?: number) {
   return useQuery({
@@ -69,3 +69,16 @@ export function useUpdateSalonProfile(salonId?: number) {
     },
   });
 }
+
+export function useChangeSalonPassword() {
+  return useMutation({
+    mutationFn: (data: ChangeSalonPasswordInput) => salonService.changePassword(data),
+    onSuccess: (res) => {
+      toast.success(res.message || "Đổi mật khẩu thành công");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Đổi mật khẩu thất bại. Vui lòng thử lại.");
+    },
+  });
+}
+

@@ -11,6 +11,15 @@ import type {
 
 const STORAGE_KEY_BOOKINGS = "ai_hairstyle_bookings";
 
+const API_BASE_URL =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
+  "http://localhost:5000/api";
+
+function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("accessToken");
+}
+
 function getStoredBookings(): Booking[] {
   return getStorageData<Booking[]>(STORAGE_KEY_BOOKINGS, MOCK_BOOKINGS);
 }
@@ -176,8 +185,51 @@ export const bookingService = {
 
   /**
    * Get single booking detail by ID with customer info
+   * GET /api/bookings/:id
    */
   async getBookingById(bookingId: number, salonId?: number): Promise<EnrichedBooking | null> {
+    const token = getAuthToken();
+    if (token) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/bookings/${bookingId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.ok) {
+          const raw = await res.json();
+          const b = raw.data || raw;
+          if (salonId !== undefined && (b.salon_id ?? b.salonId) !== salonId) {
+            return null;
+          }
+          return {
+            booking_id: b.id ?? b.booking_id,
+            user_id: b.userId ?? b.user_id,
+            salon_id: b.salonId ?? b.salon_id,
+            booking_date: b.booking_date || (b.bookingDate ? new Date(b.bookingDate).toISOString() : ""),
+            booking_time: b.booking_time || "09:00",
+            notes: b.notes || "",
+            status: b.status || "P",
+            customer: b.user
+              ? {
+                  user_id: b.user.id ?? b.user.user_id,
+                  username: b.user.name || b.user.username || "Khách hàng",
+                  fullname: b.user.name || b.user.fullname || "Khách hàng",
+                  email: b.user.email || "",
+                  phone: b.user.phone || "",
+                  avatar_url: b.user.avatarUrl || b.user.avatar_url || "",
+                  role_id: 2,
+                  created_at: new Date().toISOString(),
+                }
+              : undefined,
+            salon: b.salon,
+          };
+        }
+      } catch {
+        // Fallback to local storage if network error
+      }
+    }
+
     await randomDelay(200, 400);
 
     const allBookings = getStoredBookings();
@@ -196,9 +248,46 @@ export const bookingService = {
   },
 
   /**
-   * Create a new booking (Phase 1 user action)
+   * Create a new booking
+   * POST /api/bookings
    */
   async create(payload: CreateBookingPayload): Promise<Booking> {
+    const token = getAuthToken();
+    if (token) {
+      const res = await fetch(`${API_BASE_URL}/bookings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          salonId: payload.salon_id,
+          bookingDate: payload.booking_date,
+          notes: payload.notes || "Đặt lịch làm tóc",
+        }),
+      });
+
+      const resData = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const errorMessage = Array.isArray(resData.message)
+          ? resData.message.join(", ")
+          : resData.message || `Đặt lịch thất bại (${res.status})`;
+        throw new Error(errorMessage);
+      }
+
+      const raw = resData.data || resData;
+      return {
+        booking_id: raw.id ?? raw.booking_id,
+        user_id: raw.userId ?? raw.user_id ?? payload.user_id,
+        salon_id: raw.salonId ?? raw.salon_id ?? payload.salon_id,
+        booking_date: raw.booking_date || payload.booking_date,
+        booking_time: raw.booking_time || payload.booking_time || "09:00",
+        notes: raw.notes || payload.notes,
+        status: raw.status || "P",
+      };
+    }
+
     await randomDelay(600, 1200);
     const allBookings = getStoredBookings();
     const booking: Booking = {
@@ -212,9 +301,39 @@ export const bookingService = {
   },
 
   /**
-   * List bookings made by a user (Phase 1 customer action)
+   * List bookings made by a user
+   * GET /api/bookings/my-bookings
    */
-  async listByUser(user_id: number): Promise<Booking[]> {
+  async listByUser(user_id: number, status?: string): Promise<Booking[]> {
+    const token = getAuthToken();
+    if (token) {
+      try {
+        const url = status
+          ? `${API_BASE_URL}/bookings/my-bookings?status=${status}`
+          : `${API_BASE_URL}/bookings/my-bookings`;
+        const res = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.ok) {
+          const resData = await res.json();
+          const list = Array.isArray(resData) ? resData : resData.data || [];
+          return list.map((raw: any) => ({
+            booking_id: raw.id ?? raw.booking_id,
+            user_id: raw.userId ?? raw.user_id,
+            salon_id: raw.salonId ?? raw.salon_id,
+            booking_date: raw.booking_date || (raw.bookingDate ? new Date(raw.bookingDate).toISOString() : ""),
+            booking_time: raw.booking_time || "09:00",
+            notes: raw.notes || "",
+            status: raw.status || "P",
+          }));
+        }
+      } catch {
+        // Fallback to local storage if network error
+      }
+    }
+
     await randomDelay(300, 600);
     const allBookings = getStoredBookings();
     return allBookings

@@ -4,7 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, Role, SalonStatus } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangeSalonPasswordDto } from './dto/change-salon-password.dto';
 import { GetSalonsDto } from './dto/get-salons.dto';
 import { UpdateSalonDto } from './dto/update-salon.dto';
 
@@ -344,4 +346,54 @@ export class SalonsService {
       },
     };
   }
+
+  /**
+   * BE-05.5: API đổi mật khẩu cho Chủ Salon
+   * PATCH /api/salons/owner/me/password
+   * Quyền truy cập: Chỉ SALON_OWNER (roleId = 3)
+   */
+  async changePassword(userId: number, dto: ChangeSalonPasswordDto) {
+    // 1. Kiểm tra xác nhận mật khẩu mới phải khớp
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException('Mật khẩu mới và xác nhận mật khẩu không trùng khớp');
+    }
+
+    // 2. Tìm tài khoản người dùng đang đăng nhập
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản người dùng');
+    }
+
+    // 3. Kiểm tra mật khẩu hiện tại bằng bcrypt
+    const isCurrentMatch = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!isCurrentMatch) {
+      throw new BadRequestException('Mật khẩu hiện tại không chính xác');
+    }
+
+    // 4. Kiểm tra mật khẩu mới không được trùng với mật khẩu hiện tại
+    const isSameAsCurrent = await bcrypt.compare(dto.newPassword, user.password);
+    if (isSameAsCurrent) {
+      throw new BadRequestException('Mật khẩu mới không được trùng với mật khẩu hiện tại');
+    }
+
+    // 5. Băm mật khẩu mới bằng bcrypt trước khi lưu database
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    // 6. Cập nhật mật khẩu trong database
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+      },
+    });
+
+    // 7. Trả về thông báo thành công (không để lộ mật khẩu cũ, mới hay password hash)
+    return {
+      message: 'Đổi mật khẩu thành công',
+    };
+  }
 }
+
