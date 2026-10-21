@@ -96,4 +96,32 @@ export class HairstylesService {
 
     return hairstyle;
   }
+
+  /**
+   * Lọc danh sách kiểu tóc phù hợp với một dáng khuôn mặt, sắp xếp theo suitabilityScore giảm dần
+   * GET /api/hairstyles/by-face-shape/:shapeId
+   */
+  async findByFaceShape(shapeId: number) {
+    // 1. Kiểm tra dáng khuôn mặt có tồn tại hay không
+    const faceShape = await this.prisma.faceShape.findUnique({
+      where: { id: shapeId },
+    });
+
+    if (!faceShape) {
+      throw new NotFoundException('Face shape not found');
+    }
+
+    // 2. Lấy danh sách liên kết HairFace kèm thông tin Hairstyle tương ứng, sắp xếp theo suitabilityScore giảm dần
+    return this.prisma.hairFace.findMany({
+      where: {
+        faceShapeId: shapeId,
+      },
+      orderBy: {
+        suitabilityScore: 'desc',
+      },
+      include: {
+        hairstyle: true,
+      },
+    });
+  }
 }

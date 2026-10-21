@@ -22,8 +22,9 @@ async function runTests() {
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 5001;
   const baseUrl = `http://127.0.0.1:${port}/api/hairstyles`;
+  const faceShapesUrl = `http://127.0.0.1:${port}/api/face-shapes`;
 
-  console.log(`Server test đang chạy tại: ${baseUrl}\n`);
+  console.log(`Server test đang chạy tại: ${baseUrl} và ${faceShapesUrl}\n`);
 
   let passedCount = 0;
   let failedCount = 0;
@@ -299,6 +300,142 @@ async function runTests() {
       assert.strictEqual(resNeg.status, 400);
       const jsonNeg = await resNeg.json();
       assert.strictEqual(jsonNeg.statusCode, 400);
+    });
+
+    // ========================================================
+    // BỘ KIỂM THỬ CHO BE-03.3: GET /api/face-shapes
+    // ========================================================
+    console.log('\n--- BẮT ĐẦU KIỂM THỬ CHO API GET /api/face-shapes ---');
+
+    let sampleFaceShapeId = 1;
+
+    // 20. Lấy danh sách dáng khuôn mặt thành công
+    await testCase('20. GET /api/face-shapes -> HTTP 200, trả về danh sách dáng khuôn mặt', async () => {
+      const res = await fetch(faceShapesUrl);
+      assert.strictEqual(res.status, 200, `Expected status 200, got ${res.status}`);
+      const json = await res.json();
+      assert.ok(Array.isArray(json), 'Response phải là một mảng');
+      assert.ok(json.length >= 5, 'Phải có tối thiểu 5 dáng mặt (Oval, Tròn, Vuông, Trái Tim, Dài)');
+      sampleFaceShapeId = json[0].id;
+    });
+
+    // 21. Cấu trúc mỗi dáng khuôn mặt
+    await testCase('21. Cấu trúc FaceShape -> mỗi bản ghi có id (number) và name (string)', async () => {
+      const res = await fetch(faceShapesUrl);
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      for (const item of json) {
+        assert.ok(typeof item.id === 'number', 'id phải là số');
+        assert.ok(typeof item.name === 'string' && item.name.length > 0, 'name phải là chuỗi không rỗng');
+      }
+    });
+
+    // 22. Public API: gọi không cần token
+    await testCase('22. GET /api/face-shapes không cần token -> HTTP 200', async () => {
+      const res = await fetch(faceShapesUrl, { headers: {} });
+      assert.strictEqual(res.status, 200);
+    });
+
+    // ========================================================
+    // BỘ KIỂM THỬ CHO BE-03.4: GET /api/hairstyles/by-face-shape/:shapeId
+    // ========================================================
+    console.log('\n--- BẮT ĐẦU KIỂM THỬ CHO API GET /api/hairstyles/by-face-shape/:shapeId ---');
+
+    // 23. Lọc kiểu tóc theo shapeId hợp lệ
+    await testCase('23. GET /api/hairstyles/by-face-shape/:shapeId hợp lệ -> HTTP 200, trả về danh sách', async () => {
+      const res = await fetch(`${baseUrl}/by-face-shape/${sampleFaceShapeId}`);
+      assert.strictEqual(res.status, 200, `Expected status 200, got ${res.status}`);
+      const json = await res.json();
+      assert.ok(Array.isArray(json), 'Kết quả phải là một mảng');
+      assert.ok(json.length > 0, 'Dáng mặt seed phải có kiểu tóc liên kết');
+    });
+
+    // 24. Kết quả được sắp xếp theo suitabilityScore giảm dần
+    await testCase('24. Kết quả sắp xếp theo suitabilityScore giảm dần', async () => {
+      const res = await fetch(`${baseUrl}/by-face-shape/${sampleFaceShapeId}`);
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      for (let i = 0; i < json.length - 1; i++) {
+        assert.ok(
+          json[i].suitabilityScore >= json[i + 1].suitabilityScore,
+          `Phần tử ${i} (${json[i].suitabilityScore}) phải >= phần tử ${i + 1} (${json[i + 1].suitabilityScore})`,
+        );
+      }
+    });
+
+    // 25. Mỗi phần tử chứa suitabilityScore và thông tin hairstyle kèm imageUrl
+    await testCase('25. Cấu trúc kết quả -> chứa suitabilityScore và thông tin hairstyle (có imageUrl)', async () => {
+      const res = await fetch(`${baseUrl}/by-face-shape/${sampleFaceShapeId}`);
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      for (const item of json) {
+        assert.ok(typeof item.suitabilityScore === 'number', 'suitabilityScore phải là số');
+        assert.ok(item.hairstyle, 'item phải có thông tin hairstyle');
+        assert.ok(typeof item.hairstyle.id === 'number', 'hairstyle.id phải là số');
+        assert.ok(typeof item.hairstyle.name === 'string', 'hairstyle.name phải là chuỗi');
+        assert.ok(typeof item.hairstyle.imageUrl === 'string' && item.hairstyle.imageUrl.length > 0, 'imageUrl phải tồn tại');
+      }
+    });
+
+    // 26. Dáng mặt tồn tại nhưng chưa có kiểu tóc liên kết -> trả HTTP 200 với mảng rỗng []
+    await testCase('26. Dáng mặt tồn tại nhưng chưa liên kết kiểu tóc nào -> HTTP 200 với mảng rỗng []', async () => {
+      const { PrismaService } = await import('../src/prisma/prisma.service');
+      const prisma = app.get(PrismaService);
+      const isolatedShape = await prisma.faceShape.create({
+        data: {
+          name: `Dáng mặt thử nghiệm độc lập ${Date.now()}`,
+        },
+      });
+
+      try {
+        const res = await fetch(`${baseUrl}/by-face-shape/${isolatedShape.id}`);
+        assert.strictEqual(res.status, 200);
+        const json = await res.json();
+        assert.ok(Array.isArray(json), 'Phải trả về mảng');
+        assert.strictEqual(json.length, 0, 'Phải là mảng rỗng []');
+      } finally {
+        await prisma.faceShape.delete({ where: { id: isolatedShape.id } });
+      }
+    });
+
+    // 27. shapeId không tồn tại -> HTTP 404 Not Found
+    await testCase('27. GET by-face-shape/:shapeId với shapeId không tồn tại -> HTTP 404 Not Found', async () => {
+      const nonExistentShapeId = 9999999;
+      const res = await fetch(`${baseUrl}/by-face-shape/${nonExistentShapeId}`);
+      assert.strictEqual(res.status, 404);
+      const json = await res.json();
+      assert.strictEqual(json.statusCode, 404);
+      assert.strictEqual(json.message, 'Face shape not found');
+    });
+
+    // 28. shapeId sai định dạng (chuỗi không phải số) -> HTTP 400 Bad Request
+    await testCase('28. GET by-face-shape/:shapeId với shapeId không phải số (abc) -> HTTP 400 Bad Request', async () => {
+      const res = await fetch(`${baseUrl}/by-face-shape/abc`);
+      assert.strictEqual(res.status, 400);
+      const json = await res.json();
+      assert.strictEqual(json.statusCode, 400);
+    });
+
+    // 29. shapeId số âm hoặc bằng 0 -> HTTP 400 Bad Request
+    await testCase('29. GET by-face-shape/:shapeId với shapeId <= 0 (0, -1) -> HTTP 400 Bad Request', async () => {
+      const res0 = await fetch(`${baseUrl}/by-face-shape/0`);
+      assert.strictEqual(res0.status, 400);
+      const json0 = await res0.json();
+      assert.strictEqual(json0.statusCode, 400);
+
+      const resNeg = await fetch(`${baseUrl}/by-face-shape/-1`);
+      assert.strictEqual(resNeg.status, 400);
+      const jsonNeg = await resNeg.json();
+      assert.strictEqual(jsonNeg.statusCode, 400);
+    });
+
+    // 30. Kiểm tra không làm hỏng GET /api/hairstyles/:id
+    await testCase('30. Đảm bảo GET /api/hairstyles/:id vẫn hoạt động bình thường, không bị route by-face-shape bắt nhầm', async () => {
+      const res = await fetch(`${baseUrl}/${testHairstyleId}`);
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      assert.strictEqual(json.id, testHairstyleId);
+      assert.ok(json.name);
     });
 
   } finally {
