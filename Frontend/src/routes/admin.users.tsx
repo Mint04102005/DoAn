@@ -206,7 +206,9 @@ function AdminUsersPage() {
             <AlertCircle className="h-6 w-6" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-foreground">Không thể tải dữ liệu người dùng</h3>
+            <h3 className="text-base font-semibold text-foreground">
+              Không thể tải dữ liệu người dùng
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {usersQuery.error instanceof Error ? usersQuery.error.message : "Vui lòng thử lại."}
             </p>
@@ -292,7 +294,9 @@ function AdminUsersPage() {
                                 </span>
                               )}
                             </p>
-                            <p className="truncate text-xs text-muted-foreground">@{user.username}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              @{user.username}
+                            </p>
                           </div>
                         </div>
                       </td>
@@ -604,7 +608,13 @@ function AdminUsersPage() {
                   <div>
                     <p className="text-muted-foreground">Ngày sinh & Giới tính</p>
                     <p className="text-foreground font-medium">
-                      {selectedUser.dob || "1995-01-01"} ({selectedUser.gender === "female" ? "Nữ" : "Nam"})
+                      {selectedUser.dob || "Chưa cập nhật"} (
+                      {selectedUser.gender === "female" || selectedUser.gender === "Nữ"
+                        ? "Nữ"
+                        : selectedUser.gender === "male" || selectedUser.gender === "Nam"
+                          ? "Nam"
+                          : "Chưa cập nhật"}
+                      )
                     </p>
                   </div>
                 </div>
@@ -614,7 +624,7 @@ function AdminUsersPage() {
                   <div className="min-w-0">
                     <p className="text-muted-foreground">Địa chỉ</p>
                     <p className="truncate text-foreground font-medium">
-                      {selectedUser.address || "TP. Hồ Chí Minh"}
+                      {selectedUser.address || "Chưa cập nhật"}
                     </p>
                   </div>
                 </div>
@@ -636,14 +646,16 @@ function AdminUsersPage() {
                     <p className="flex justify-between">
                       <span className="text-muted-foreground">Mã giấy phép kinh doanh:</span>
                       <span className="font-mono font-medium text-foreground">
-                        {selectedUser.owner?.license_no || "BL-2025-XXXX"}
+                        {selectedUser.owner?.license_no || "Chưa cung cấp"}
                       </span>
                     </p>
                     <p className="flex justify-between">
                       <span className="text-muted-foreground">Trạng thái xác minh:</span>
                       <span
                         className={
-                          selectedUser.owner?.is_verified ? "text-emerald-600 font-medium" : "text-amber-600 font-medium"
+                          selectedUser.owner?.is_verified
+                            ? "text-emerald-600 font-medium"
+                            : "text-amber-600 font-medium"
                         }
                       >
                         {selectedUser.owner?.is_verified
@@ -731,9 +743,7 @@ function AdminUsersPage() {
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
               <Unlock className="h-6 w-6" />
             </div>
-            <DialogTitle className="text-center text-lg font-bold">
-              Mở khóa tài khoản?
-            </DialogTitle>
+            <DialogTitle className="text-center text-lg font-bold">Mở khóa tài khoản?</DialogTitle>
             <DialogDescription className="text-center">
               Bạn có chắc muốn mở khóa tài khoản{" "}
               <strong className="text-foreground">

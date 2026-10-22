@@ -732,12 +732,12 @@ function AdminApprovalsPage() {
                 </div>
 
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Tài liệu đăng ký kinh doanh và chứng chỉ đào tạo Master Stylist được tải lên bởi chủ salon.
+                  Tài liệu do chủ salon cung cấp, nếu có.
                 </p>
 
                 {/* License Document Preview Box */}
                 <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
-                  {imageError ? (
+                  {imageError || !selectedApproval.license_image_url ? (
                     <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
                       <AlertCircle className="h-8 w-8 text-muted-foreground" />
                       <p className="mt-2 text-sm font-medium">Không thể tải tài liệu</p>
@@ -767,7 +767,7 @@ function AdminApprovalsPage() {
                   )}
                   <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
                     <span className="font-mono">
-                      Chứng nhận: {selectedApproval.owner?.license_no || "BL-2025-XXXX"}
+                      Chứng nhận: {selectedApproval.owner?.license_no || "Chưa cung cấp"}
                     </span>
                     <button
                       type="button"

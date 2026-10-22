@@ -1,5 +1,3 @@
-import { randomDelay } from "@/lib/delay";
-import { MOCK_SALONS, MOCK_SALON_OWNERS, getStorageData, setStorageData } from "@/lib/mock-data";
 import type { BackendSalonItem, ChangeSalonPasswordInput, Salon, SalonDetailData, SalonFilterParams, SalonOwner, UpdateSalonProfileInput } from "@/types";
 
 const API_BASE_URL =
@@ -165,7 +163,7 @@ export const salonService = {
     const owner: SalonOwner = {
       owner_id: data.owner?.id ?? 0,
       user_id: data.owner?.id ?? 0,
-      license_no: `BL-2026-${String(1000 + (data.id ?? 1))}`,
+      license_no: "",
       is_verified: data.status === "APPROVED",
     };
 

@@ -42,6 +42,7 @@ export function transformBackendUser(raw: any): User {
     phone: raw.phone || "",
     role_id,
     role: roleName,
+    is_locked: raw.isLocked ?? false,
     gender: raw.gender || undefined,
     dob: raw.dob || "",
     address: raw.address || "",
