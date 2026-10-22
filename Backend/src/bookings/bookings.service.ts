@@ -78,10 +78,11 @@ export class BookingsService {
     const timeIso = booking.bookingTime
       ? new Date(booking.bookingTime).toISOString()
       : '';
-    const dateStr = timeIso ? timeIso.split('T')[0] : '';
+    const localIso = timeIso ? new Date(new Date(timeIso).getTime() + 7 * 3600000).toISOString() : '';
+    const dateStr = localIso ? localIso.split('T')[0] : '';
     const timeStr =
-      timeIso && timeIso.includes('T')
-        ? timeIso.split('T')[1].substring(0, 5)
+      localIso && localIso.includes('T')
+        ? localIso.split('T')[1].substring(0, 5)
         : '09:00';
 
     return {
@@ -173,9 +174,10 @@ export class BookingsService {
     // 2. Kiểm tra salonId tồn tại và thuộc salon đã được phê duyệt hoạt động (APPROVED)
     const salon = await this.prisma.salon.findUnique({
       where: { id: targetSalonId },
+      include: { owner: { select: { isLocked: true, role: true } } },
     });
 
-    if (!salon || salon.status !== SalonStatus.APPROVED) {
+    if (!salon || salon.status !== SalonStatus.APPROVED || salon.owner.isLocked || salon.owner.role !== Role.SALON_OWNER) {
       throw new NotFoundException(
         'Salon không tồn tại hoặc chưa được kích hoạt hoạt động',
       );
@@ -495,9 +497,10 @@ export class BookingsService {
     const bookedSlots = busyBookings.map((b) => {
       const statusCode = this.statusMapToCode[b.status] || b.status;
       const timeIso = new Date(b.bookingTime).toISOString();
+      const localIso = new Date(new Date(timeIso).getTime() + 7 * 3600000).toISOString();
       const timeStr =
-        timeIso && timeIso.includes('T')
-          ? timeIso.split('T')[1].substring(0, 5)
+        localIso && localIso.includes('T')
+          ? localIso.split('T')[1].substring(0, 5)
           : '09:00';
 
       return {
