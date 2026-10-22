@@ -51,6 +51,7 @@ model User {
   dob       String?
   address   String?
   role      Role     @default(USER)
+  isLocked  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

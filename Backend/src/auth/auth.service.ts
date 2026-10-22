@@ -117,7 +117,7 @@ export class AuthService {
       },
     });
 
-    if (!user) {
+    if (!user || user.isLocked) {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
     }
 

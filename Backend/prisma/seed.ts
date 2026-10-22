@@ -176,7 +176,7 @@ async function main() {
 
     for (const h of allHairstyles) {
       if (h.faceShapes && h.faceShapes.length > 0) {
-        let score = 0.95;
+        let score = 95;
         for (const shapeName of h.faceShapes) {
           const fsId = faceShapeMap.get(shapeName);
           if (fsId) {
@@ -194,7 +194,7 @@ async function main() {
                 suitabilityScore: score,
               },
             });
-            score = Math.max(0.7, +(score - 0.1).toFixed(2));
+            score = Math.max(70, score - 10);
           }
         }
       }
