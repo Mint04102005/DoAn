@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -34,6 +34,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { BookingStatusBadge } from "@/components/shared/BookingStatusBadge";
 import { EmptyState, LoadingState } from "@/components/shared/StateViews";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,6 +110,23 @@ function formatDateDisplay(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+function formatTimeDisplay(dateStr?: string, fallbackTime?: string): string {
+  if (fallbackTime && fallbackTime !== "09:00") return fallbackTime;
+  if (dateStr) {
+    try {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        const hours = String(d.getHours()).padStart(2, "0");
+        const minutes = String(d.getMinutes()).padStart(2, "0");
+        return `${hours}:${minutes}`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return fallbackTime || "09:00";
 }
 
 function UserProfilePage() {
@@ -180,6 +207,28 @@ function UserProfilePage() {
     queryKey: ["history", user?.user_id],
     queryFn: () => tryOnService.listByUser(user!.user_id, 20),
     enabled: !!user,
+  });
+
+  const queryClient = useQueryClient();
+
+  // BE-07.4: Hủy lịch hẹn khách hàng
+  const [cancelTargetBooking, setCancelTargetBooking] = useState<{
+    id: number;
+    salonName: string;
+    time: string;
+    date: string;
+  } | null>(null);
+
+  const cancelMutation = useMutation({
+    mutationFn: (bookingId: number) => bookingService.cancelBooking(bookingId),
+    onSuccess: () => {
+      toast.success("Hủy lịch hẹn thành công!");
+      queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
+      setCancelTargetBooking(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Hủy lịch hẹn thất bại");
+    },
   });
 
   const bookingsQuery = useQuery({
@@ -845,7 +894,7 @@ function UserProfilePage() {
                                     </span>
                                     <span className="flex items-center gap-1 font-mono text-primary">
                                       <Clock className="h-3.5 w-3.5" />
-                                      {b.booking_time || "09:00"}
+                                      {formatTimeDisplay(b.booking_date, b.booking_time)}
                                     </span>
                                   </div>
                                   {b.notes && (
@@ -856,12 +905,62 @@ function UserProfilePage() {
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-end gap-2 shrink-0">
+                              <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-2 shrink-0">
+                                {(() => {
+                                  const isPendingOrConfirmed = b.status === "P" || b.status === "C";
+                                  if (!isPendingOrConfirmed) return null;
+
+                                  const bookingDateTime = new Date(b.booking_date).getTime();
+                                  const now = Date.now();
+                                  const remainingMs = bookingDateTime - now;
+                                  const minCancelMs = 2 * 60 * 60 * 1000;
+                                  const isPast = remainingMs <= 0;
+                                  const isLessThan2Hours = remainingMs < minCancelMs;
+                                  const canCancel = !isPast && !isLessThan2Hours;
+
+                                  return (
+                                    <div className="flex items-center gap-1.5">
+                                      {isLessThan2Hours && (
+                                        <span className="text-[11px] text-destructive/80 italic">
+                                          {isPast ? "Đã qua giờ hẹn" : "Còn dưới 2h"}
+                                        </span>
+                                      )}
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={!canCancel || cancelMutation.isPending}
+                                        onClick={() =>
+                                          setCancelTargetBooking({
+                                            id: b.booking_id,
+                                            salonName: salon?.salonname || `Salon #${b.salon_id}`,
+                                            time: formatTimeDisplay(b.booking_date, b.booking_time),
+                                            date: formatDateDisplay(b.booking_date),
+                                          })
+                                        }
+                                        className={`rounded-xl text-xs h-8 ${
+                                          canCancel
+                                            ? "border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                                            : "opacity-50 cursor-not-allowed"
+                                        }`}
+                                        title={
+                                          isPast
+                                            ? "Lịch hẹn đã qua thời gian, không thể hủy"
+                                            : isLessThan2Hours
+                                              ? "Chỉ có thể hủy lịch trước giờ hẹn ít nhất 2 tiếng"
+                                              : "Hủy lịch hẹn này"
+                                        }
+                                      >
+                                        <X className="mr-1 h-3.5 w-3.5" /> Hủy lịch
+                                      </Button>
+                                    </div>
+                                  );
+                                })()}
+
                                 <Button
                                   asChild
                                   size="sm"
                                   variant="outline"
-                                  className="rounded-xl text-xs"
+                                  className="rounded-xl text-xs h-8"
                                 >
                                   <Link to="/user/salons">
                                     Xem Salon <ExternalLink className="ml-1 h-3 w-3" />
@@ -875,6 +974,53 @@ function UserProfilePage() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* AlertDialog Xác nhận Hủy lịch hẹn */}
+                <AlertDialog
+                  open={!!cancelTargetBooking}
+                  onOpenChange={(open) => !open && setCancelTargetBooking(null)}
+                >
+                  <AlertDialogContent className="rounded-2xl">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Xác nhận hủy lịch hẹn?</AlertDialogTitle>
+                      <AlertDialogDescription className="space-y-2">
+                        <p>
+                          Bạn có chắc chắn muốn hủy lịch hẹn tại{" "}
+                          <strong className="text-foreground">
+                            {cancelTargetBooking?.salonName}
+                          </strong>{" "}
+                          vào lúc{" "}
+                          <strong className="text-foreground">
+                            {cancelTargetBooking?.time} ngày {cancelTargetBooking?.date}
+                          </strong>
+                          ?
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Lưu ý: Sau khi hủy, trạng thái lịch hẹn sẽ chuyển thành "Đã hủy" (X) và không thể khôi phục.
+                        </p>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel
+                        disabled={cancelMutation.isPending}
+                        className="rounded-xl"
+                      >
+                        Giữ lại lịch
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={cancelMutation.isPending}
+                        onClick={() => {
+                          if (cancelTargetBooking) {
+                            cancelMutation.mutate(cancelTargetBooking.id);
+                          }
+                        }}
+                        className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {cancelMutation.isPending ? "Đang hủy..." : "Đồng ý hủy"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </motion.div>
             )}
 

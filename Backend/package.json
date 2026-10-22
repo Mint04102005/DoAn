@@ -14,8 +14,11 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
-    "test": "ts-node test/test-hairstyles.ts && ts-node test/test-salons.ts",
-    "test:salons": "ts-node test/test-salons.ts"
+    "test": "ts-node test/test-hairstyles.ts && ts-node test/test-salons.ts && ts-node test/test-change-salon-password.ts && ts-node test/test-bookings.ts && ts-node test/test-bookings-management.ts",
+    "test:salons": "ts-node test/test-salons.ts",
+    "test:password": "ts-node test/test-change-salon-password.ts",
+    "test:bookings": "ts-node test/test-bookings.ts",
+    "test:bookings:mgmt": "ts-node test/test-bookings-management.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

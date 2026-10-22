@@ -6,6 +6,7 @@ export interface BookingFilters {
   search?: string;
   status?: BookingStatus | "ALL";
   dateFilter?: "all" | "today" | "tomorrow" | "this_week";
+  date?: string;
   sortBy?: "date_desc" | "date_asc";
   page?: number;
   limit?: number;
@@ -102,4 +103,11 @@ export interface BackendSalonItem {
     avatarUrl?: string | null;
   };
 }
+
+export interface ChangeSalonPasswordInput {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 

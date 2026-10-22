@@ -108,6 +108,7 @@ function SalonBookingsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "ALL">("ALL");
   const [dateFilter, setDateFilter] = useState<"all" | "today" | "tomorrow" | "this_week">("all");
+  const [customDate, setCustomDate] = useState("");
   const [sortBy, setSortBy] = useState<"date_desc" | "date_asc">("date_desc");
   const [page, setPage] = useState(1);
 
@@ -115,6 +116,7 @@ function SalonBookingsPage() {
     search: searchTerm,
     status: statusFilter,
     dateFilter,
+    date: customDate || undefined,
     sortBy,
     page,
     limit: 10,
@@ -169,11 +171,13 @@ function SalonBookingsPage() {
     setSearchTerm("");
     setStatusFilter("ALL");
     setDateFilter("all");
+    setCustomDate("");
     setSortBy("date_desc");
     setPage(1);
   };
 
-  const hasActiveFilters = searchTerm !== "" || statusFilter !== "ALL" || dateFilter !== "all";
+  const hasActiveFilters =
+    searchTerm !== "" || statusFilter !== "ALL" || dateFilter !== "all" || customDate !== "";
 
   const counts = bookingsQuery.data?.counts || {
     all: 0,
@@ -343,7 +347,7 @@ function SalonBookingsPage() {
           {/* Search, Date Filter & Sorting Controls */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
             {/* Search Input */}
-            <div className="relative lg:col-span-5">
+            <div className="relative lg:col-span-4">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Tìm theo tên khách, SĐT hoặc ghi chú..."
@@ -366,29 +370,45 @@ function SalonBookingsPage() {
             </div>
 
             {/* Date Quick Filter */}
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-2">
               <Select
                 value={dateFilter}
                 onValueChange={(v: "all" | "today" | "tomorrow" | "this_week") => {
                   setDateFilter(v);
+                  if (v !== "all") setCustomDate("");
                   setPage(1);
                 }}
               >
                 <SelectTrigger className="rounded-xl">
                   <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <SelectValue placeholder="Lọc theo ngày" />
+                  <SelectValue placeholder="Lọc nhanh" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl">
                   <SelectItem value="all">Tất cả ngày</SelectItem>
                   <SelectItem value="today">Hôm nay</SelectItem>
                   <SelectItem value="tomorrow">Ngày mai</SelectItem>
-                  <SelectItem value="this_week">Trong tuần này</SelectItem>
+                  <SelectItem value="this_week">Trong tuần</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Sort Select */}
+            {/* Custom Exact Date Input */}
             <div className="lg:col-span-3">
+              <Input
+                type="date"
+                value={customDate}
+                onChange={(e) => {
+                  setCustomDate(e.target.value);
+                  if (e.target.value) setDateFilter("all");
+                  setPage(1);
+                }}
+                className="rounded-xl font-mono text-xs"
+                title="Chọn ngày cụ thể để lọc"
+              />
+            </div>
+
+            {/* Sort Select */}
+            <div className="lg:col-span-2">
               <Select
                 value={sortBy}
                 onValueChange={(v: "date_desc" | "date_asc") => {
@@ -401,8 +421,8 @@ function SalonBookingsPage() {
                   <SelectValue placeholder="Sắp xếp" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl">
-                  <SelectItem value="date_desc">Mới nhất (Ngày giảm dần)</SelectItem>
-                  <SelectItem value="date_asc">Cũ nhất (Ngày tăng dần)</SelectItem>
+                  <SelectItem value="date_desc">Mới nhất</SelectItem>
+                  <SelectItem value="date_asc">Cũ nhất</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -509,7 +529,11 @@ function SalonBookingsPage() {
 
                       <TableCell>
                         <Badge variant="outline" className="text-[11px] font-normal">
-                          {customer?.gender === "female" ? "Nữ" : "Nam"}
+                          {customer?.gender === "female" || customer?.gender === "Nữ"
+                            ? "Nữ"
+                            : customer?.gender === "male" || customer?.gender === "Nam"
+                              ? "Nam"
+                              : customer?.gender || "Khác"}
                         </Badge>
                       </TableCell>
 
