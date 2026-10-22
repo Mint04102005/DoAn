@@ -15,6 +15,21 @@ const API_BASE_URL =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
   "http://localhost:5000/api";
 
+function extractTimeFromDate(dateValue?: string | Date | null, fallback = "09:00"): string {
+  if (!dateValue) return fallback;
+  try {
+    const d = new Date(dateValue);
+    if (!isNaN(d.getTime())) {
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return `${hours}:${minutes}`;
+    }
+  } catch {
+    // ignore
+  }
+  return fallback;
+}
+
 function getAuthToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("accessToken");
@@ -38,49 +53,97 @@ interface CreateBookingPayload {
 
 export const bookingService = {
   /**
-   * Fetch all bookings for a specific salon, applying filters and pagination at service level.
-   * Enforces data isolation so salon owners cannot view bookings belonging to other salons.
+   * BE-07.6: Fetch all bookings for the authenticated salon owner from real Backend API
+   * GET /api/bookings/salon
    */
   async getSalonBookings(
-    salonId: number,
+    salonId?: number,
     filters: BookingFilters = {},
   ): Promise<SalonBookingsResponse> {
-    await randomDelay(400, 800);
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("Vui lòng đăng nhập với tài khoản Chủ Salon để xem danh sách lịch hẹn.");
+    }
 
-    const allBookings = getStoredBookings();
-    const allUsers = MOCK_USERS;
+    const params = new URLSearchParams();
+    if (filters.status && filters.status !== "ALL") {
+      params.append("status", filters.status);
+    }
+    if (filters.date) {
+      params.append("date", filters.date);
+    } else if (filters.dateFilter && filters.dateFilter !== "all") {
+      const now = new Date();
+      if (filters.dateFilter === "today") {
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        params.append("date", `${year}-${month}-${day}`);
+      } else if (filters.dateFilter === "tomorrow") {
+        const tomorrow = new Date(Date.now() + 86400000);
+        const year = tomorrow.getFullYear();
+        const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+        const day = String(tomorrow.getDate()).padStart(2, "0");
+        params.append("date", `${year}-${month}-${day}`);
+      }
+    }
+    if (filters.page) {
+      params.append("page", String(filters.page));
+    }
+    if (filters.limit) {
+      params.append("limit", String(filters.limit));
+    }
 
-    // Scope boundary: Strictly filter by salonId
-    const salonOnlyBookings = allBookings.filter((b) => b.salon_id === salonId);
+    const res = await fetch(`${API_BASE_URL}/bookings/salon?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-    // Calculate total counts for badges/tabs
-    const counts = {
-      all: salonOnlyBookings.length,
-      p: salonOnlyBookings.filter((b) => b.status === "P").length,
-      c: salonOnlyBookings.filter((b) => b.status === "C").length,
-      d: salonOnlyBookings.filter((b) => b.status === "D").length,
-      x: salonOnlyBookings.filter((b) => b.status === "X").length,
-    };
+    const resData = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = Array.isArray(resData.message)
+        ? resData.message.join(", ")
+        : resData.message || `Lỗi tải danh sách lịch hẹn (${res.status})`;
+      throw new Error(msg);
+    }
 
-    // Enrich with customer details
-    const enrichedList: EnrichedBooking[] = salonOnlyBookings.map((b) => {
-      const customer = allUsers.find((u) => u.user_id === b.user_id);
+    const rawList = resData.data || [];
+    const pagination = resData.pagination || {};
+    const backendCounts = resData.counts || { all: 0, p: 0, c: 0, d: 0, x: 0 };
+
+    const mappedData: EnrichedBooking[] = rawList.map((b: any) => {
+      const bDate = b.bookingDate ? new Date(b.bookingDate) : new Date();
+      const timeStr = `${String(bDate.getHours()).padStart(2, "0")}:${String(bDate.getMinutes()).padStart(2, "0")}`;
       return {
-        ...b,
-        customer,
+        booking_id: b.id,
+        user_id: b.userId ?? b.user?.id,
+        salon_id: b.salonId ?? b.salon?.id ?? salonId,
+        booking_date: b.bookingDate ? new Date(b.bookingDate).toISOString() : "",
+        booking_time: timeStr,
+        notes: b.notes || "",
+        status: b.status,
+        customer: b.user
+          ? {
+              user_id: b.user.id,
+              username: b.user.username || b.user.name || "Khách hàng",
+              fullname: b.user.name || b.user.username || "Khách hàng",
+              phone: b.user.phone || "",
+              email: b.user.email || "",
+              avatar_url: b.user.avatarUrl || "",
+              role_id: 2,
+              gender: b.user.gender || "other",
+              created_at: b.createdAt || new Date().toISOString(),
+            }
+          : undefined,
+        salon: b.salon,
       };
     });
 
-    // Apply Status Filter
-    let filtered = enrichedList;
-    if (filters.status && filters.status !== "ALL") {
-      filtered = filtered.filter((b) => b.status === filters.status);
-    }
-
-    // Apply Search Filter (Customer name, username, phone, or notes)
+    // Client-side quick search filtering if user typed in search box
+    let finalData = mappedData;
     if (filters.search && filters.search.trim() !== "") {
       const q = filters.search.trim().toLowerCase();
-      filtered = filtered.filter((b) => {
+      finalData = finalData.filter((b) => {
         const customer = b.customer;
         const nameMatch = customer?.fullname?.toLowerCase().includes(q) ?? false;
         const userMatch = customer?.username?.toLowerCase().includes(q) ?? false;
@@ -90,60 +153,151 @@ export const bookingService = {
       });
     }
 
-    // Apply Date Quick Filter
-    if (filters.dateFilter && filters.dateFilter !== "all") {
-      const now = new Date();
-      const todayStr = now.toISOString().split("T")[0]!;
-      const tomorrow = new Date(Date.now() + 86400000);
-      const tomorrowStr = tomorrow.toISOString().split("T")[0]!;
+    return {
+      data: finalData,
+      total: pagination.total ?? resData.total ?? finalData.length,
+      page: pagination.page ?? filters.page ?? 1,
+      limit: pagination.limit ?? filters.limit ?? 10,
+      totalPages:
+        pagination.totalPages ??
+        (Math.ceil((pagination.total ?? finalData.length) / (filters.limit || 10)) || 1),
+      counts: backendCounts,
+    };
+  },
 
-      if (filters.dateFilter === "today") {
-        filtered = filtered.filter((b) => b.booking_date.startsWith(todayStr));
-      } else if (filters.dateFilter === "tomorrow") {
-        filtered = filtered.filter((b) => b.booking_date.startsWith(tomorrowStr));
-      } else if (filters.dateFilter === "this_week") {
-        // Next 7 days
-        const sevenDaysLater = new Date(Date.now() + 7 * 86400000);
-        filtered = filtered.filter((b) => {
-          const bDate = new Date(b.booking_date);
-          return bDate >= new Date(todayStr) && bDate <= sevenDaysLater;
-        });
-      }
+  /**
+   * BE-07.4: Customer cancels their own booking
+   * PATCH /api/bookings/:id/cancel
+   */
+  async cancelBooking(bookingId: number): Promise<Booking> {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("Vui lòng đăng nhập để thực hiện thao tác");
     }
 
-    // Apply Sorting
-    filtered.sort((a, b) => {
-      const timeA = `${a.booking_date}T${a.booking_time || "00:00"}`;
-      const timeB = `${b.booking_date}T${b.booking_time || "00:00"}`;
-      const diff = new Date(timeB).getTime() - new Date(timeA).getTime();
-      return filters.sortBy === "date_asc" ? -diff : diff;
+    const res = await fetch(`${API_BASE_URL}/bookings/${bookingId}/cancel`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     });
 
-    const total = filtered.length;
-    const limit = filters.limit || 10;
-    const page = Math.max(1, filters.page || 1);
-    const totalPages = Math.ceil(total / limit) || 1;
-    const offset = (page - 1) * limit;
-    const paginatedData = filtered.slice(offset, offset + limit);
+    const resData = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = Array.isArray(resData.message)
+        ? resData.message.join(", ")
+        : resData.message || `Hủy lịch thất bại (${res.status})`;
+      throw new Error(msg);
+    }
+
+    const raw = resData.data || resData;
+    return {
+      booking_id: raw.id ?? raw.booking_id ?? bookingId,
+      user_id: raw.userId ?? raw.user_id,
+      salon_id: raw.salonId ?? raw.salon_id,
+      booking_date: raw.bookingDate ? new Date(raw.bookingDate).toISOString() : raw.booking_date,
+      booking_time: raw.booking_time || "09:00",
+      notes: raw.notes || "",
+      status: "X",
+    };
+  },
+
+  /**
+   * BE-07.5: Check booked slots of a salon on a specific date (YYYY-MM-DD)
+   * GET /api/bookings/salon/:salonId/availability?date=YYYY-MM-DD
+   */
+  async getSalonAvailability(
+    salonId: number,
+    date: string,
+  ): Promise<{
+    salonId: number;
+    date: string;
+    bookedSlots: Array<{
+      bookingId: number;
+      bookingDate: string;
+      status: string;
+      time: string;
+    }>;
+  }> {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/bookings/salon/${salonId}/availability?date=${date}`, {
+      headers,
+    });
+
+    const resData = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = Array.isArray(resData.message)
+        ? resData.message.join(", ")
+        : resData.message || `Không thể kiểm tra khung giờ khả dụng (${res.status})`;
+      throw new Error(msg);
+    }
+
+    const raw = resData.data || resData;
+    const bookedSlots = (raw.bookedSlots || []).map((slot: any) => {
+      const d = new Date(slot.bookingDate);
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return {
+        bookingId: slot.bookingId ?? slot.id,
+        bookingDate: slot.bookingDate,
+        status: slot.status,
+        time: `${hours}:${minutes}`,
+      };
+    });
 
     return {
-      data: paginatedData,
-      total,
-      page,
-      limit,
-      totalPages,
-      counts,
+      salonId: raw.salonId ?? salonId,
+      date: raw.date ?? date,
+      bookedSlots,
     };
   },
 
   /**
    * Update the status of a booking with role-based business rules.
+   * PATCH /api/bookings/:id/status
    */
   async updateBookingStatus(
     bookingId: number,
     newStatus: BookingStatus,
     salonId?: number,
   ): Promise<Booking> {
+    const token = getAuthToken();
+    if (token) {
+      const res = await fetch(`${API_BASE_URL}/bookings/${bookingId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = Array.isArray(resData.message)
+          ? resData.message.join(", ")
+          : resData.message || `Cập nhật trạng thái thất bại (${res.status})`;
+        throw new Error(msg);
+      }
+
+      const raw = resData.data || resData;
+      const rawDate = raw.bookingDate || raw.booking_date;
+      return {
+        booking_id: raw.id ?? raw.booking_id ?? bookingId,
+        user_id: raw.userId ?? raw.user_id,
+        salon_id: raw.salonId ?? raw.salon_id ?? salonId,
+        booking_date: rawDate ? new Date(rawDate).toISOString() : "",
+        booking_time: extractTimeFromDate(rawDate),
+        notes: raw.notes || "",
+        status: raw.status || newStatus,
+      };
+    }
+
     await randomDelay(400, 700);
 
     const allBookings = getStoredBookings();
@@ -155,15 +309,10 @@ export const bookingService = {
 
     const currentBooking = allBookings[index]!;
 
-    // Salon isolation check
     if (salonId !== undefined && currentBooking.salon_id !== salonId) {
       throw new Error("Bạn không có quyền chỉnh sửa lịch hẹn của salon khác");
     }
 
-    // Business Rules:
-    // P -> C or X
-    // C -> D or X
-    // D & X cannot be changed
     if (currentBooking.status === "D") {
       throw new Error("Lịch hẹn đã hoàn thành, không thể thay đổi trạng thái");
     }
@@ -202,12 +351,13 @@ export const bookingService = {
           if (salonId !== undefined && (b.salon_id ?? b.salonId) !== salonId) {
             return null;
           }
+          const rawDate = b.bookingDate || b.booking_date;
           return {
             booking_id: b.id ?? b.booking_id,
             user_id: b.userId ?? b.user_id,
             salon_id: b.salonId ?? b.salon_id,
-            booking_date: b.booking_date || (b.bookingDate ? new Date(b.bookingDate).toISOString() : ""),
-            booking_time: b.booking_time || "09:00",
+            booking_date: rawDate ? new Date(rawDate).toISOString() : "",
+            booking_time: extractTimeFromDate(rawDate, b.booking_time),
             notes: b.notes || "",
             status: b.status || "P",
             customer: b.user
@@ -277,12 +427,13 @@ export const bookingService = {
       }
 
       const raw = resData.data || resData;
+      const rawDate = raw.bookingDate || raw.booking_date || payload.booking_date;
       return {
         booking_id: raw.id ?? raw.booking_id,
         user_id: raw.userId ?? raw.user_id ?? payload.user_id,
         salon_id: raw.salonId ?? raw.salon_id ?? payload.salon_id,
-        booking_date: raw.booking_date || payload.booking_date,
-        booking_time: raw.booking_time || payload.booking_time || "09:00",
+        booking_date: rawDate ? new Date(rawDate).toISOString() : payload.booking_date,
+        booking_time: extractTimeFromDate(rawDate, payload.booking_time),
         notes: raw.notes || payload.notes,
         status: raw.status || "P",
       };
@@ -319,15 +470,18 @@ export const bookingService = {
         if (res.ok) {
           const resData = await res.json();
           const list = Array.isArray(resData) ? resData : resData.data || [];
-          return list.map((raw: any) => ({
-            booking_id: raw.id ?? raw.booking_id,
-            user_id: raw.userId ?? raw.user_id,
-            salon_id: raw.salonId ?? raw.salon_id,
-            booking_date: raw.booking_date || (raw.bookingDate ? new Date(raw.bookingDate).toISOString() : ""),
-            booking_time: raw.booking_time || "09:00",
-            notes: raw.notes || "",
-            status: raw.status || "P",
-          }));
+          return list.map((raw: any) => {
+            const rawDate = raw.bookingDate || raw.booking_date;
+            return {
+              booking_id: raw.id ?? raw.booking_id,
+              user_id: raw.userId ?? raw.user_id,
+              salon_id: raw.salonId ?? raw.salon_id,
+              booking_date: rawDate ? new Date(rawDate).toISOString() : "",
+              booking_time: extractTimeFromDate(rawDate, raw.booking_time),
+              notes: raw.notes || "",
+              status: raw.status || "P",
+            };
+          });
         }
       } catch {
         // Fallback to local storage if network error

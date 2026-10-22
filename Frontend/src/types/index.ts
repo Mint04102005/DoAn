@@ -1,7 +1,7 @@
 // Domain types matching the ERD.
 
 export type RoleId = 1 | 2 | 3;
-export type Gender = "male" | "female";
+export type Gender = "male" | "female" | "Nam" | "Nữ" | "other" | string;
 export type FaceShape = "Tròn" | "Oval" | "Vuông" | "Trái Tim" | "Dài";
 export type BookingStatus = "P" | "C" | "D" | "X";
 export type ApprovalStatus = "P" | "A" | "R";

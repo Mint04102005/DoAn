@@ -27,6 +27,29 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
+const QUICK_TIME_SLOTS = [
+  "08:30",
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "11:30",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+  "16:00",
+  "16:30",
+  "17:00",
+  "17:30",
+  "18:00",
+  "18:30",
+  "19:00",
+  "19:30",
+];
+
 function BookingPage() {
   const { id } = Route.useParams();
   const salonId = Number(id);
@@ -47,14 +70,37 @@ function BookingPage() {
     },
   });
 
+  const selectedDate = form.watch("date");
+  const selectedTime = form.watch("time");
+
+  // BE-07.5: Kiểm tra các khung giờ đã được đặt của salon
+  const availabilityQuery = useQuery({
+    queryKey: ["salon-availability", salonId, selectedDate],
+    queryFn: () => bookingService.getSalonAvailability(salonId, selectedDate),
+    enabled: !!salonId && !!selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate),
+    staleTime: 1000 * 30, // 30 seconds
+  });
+
+  const bookedSlots = availabilityQuery.data?.bookedSlots || [];
+  const bookedTimeMap = new Map<string, { status: string; bookingId: number }>();
+  bookedSlots.forEach((slot) => {
+    bookedTimeMap.set(slot.time, slot);
+  });
+
+  const isCurrentTimeBooked = Boolean(selectedTime && bookedTimeMap.has(selectedTime));
+
   const mutation = useMutation({
-    mutationFn: (values: FormValues) =>
-      bookingService.create({
+    mutationFn: (values: FormValues) => {
+      if (bookedTimeMap.has(values.time)) {
+        throw new Error(`Khung giờ ${values.time} đã có khách đặt lịch. Vui lòng chọn khung giờ khác.`);
+      }
+      return bookingService.create({
         user_id: user!.user_id,
         salon_id: salonId,
         booking_date: new Date(`${values.date}T${values.time}`).toISOString(),
         notes: values.notes ?? "",
-      }),
+      });
+    },
     onSuccess: () => {
       toast.success("Đặt lịch thành công! Đang chờ salon xác nhận.");
       navigate({ to: "/user/profile" });
@@ -123,12 +169,25 @@ function BookingPage() {
           onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
           className="space-y-5 rounded-3xl border border-border bg-card p-6 shadow-sm"
         >
-          <h2 className="text-lg font-semibold">Đặt lịch cắt tóc</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Đặt lịch cắt tóc</h2>
+            {availabilityQuery.isLoading && (
+              <span className="flex items-center text-xs text-muted-foreground">
+                <Loader2 className="mr-1 h-3 w-3 animate-spin text-primary" /> Kiểm tra lịch...
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="date">Ngày</Label>
-              <Input id="date" type="date" className="mt-1.5" {...form.register("date")} />
+              <Label htmlFor="date">Ngày hẹn</Label>
+              <Input
+                id="date"
+                type="date"
+                min={new Date().toISOString().slice(0, 10)}
+                className="mt-1.5 font-mono text-sm"
+                {...form.register("date")}
+              />
               {form.formState.errors.date ? (
                 <p className="mt-1 text-xs text-destructive">
                   {form.formState.errors.date.message}
@@ -136,8 +195,13 @@ function BookingPage() {
               ) : null}
             </div>
             <div>
-              <Label htmlFor="time">Giờ</Label>
-              <Input id="time" type="time" className="mt-1.5" {...form.register("time")} />
+              <Label htmlFor="time">Giờ hẹn cụ thể</Label>
+              <Input
+                id="time"
+                type="time"
+                className={`mt-1.5 font-mono text-sm ${isCurrentTimeBooked ? "border-destructive text-destructive" : ""}`}
+                {...form.register("time")}
+              />
               {form.formState.errors.time ? (
                 <p className="mt-1 text-xs text-destructive">
                   {form.formState.errors.time.message}
@@ -146,23 +210,89 @@ function BookingPage() {
             </div>
           </div>
 
+          {/* BE-07.5: Khung giờ nhanh & Tình trạng khả dụng */}
+          <div className="space-y-2 rounded-2xl border border-border/80 bg-muted/20 p-3.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-foreground">
+                Khung giờ khả dụng trong ngày
+              </Label>
+              {availabilityQuery.isError ? (
+                <span className="text-[11px] text-destructive">Không thể kiểm tra khung giờ</span>
+              ) : bookedSlots.length === 0 && !availabilityQuery.isLoading ? (
+                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                  ✓ Tất cả giờ đều trống
+                </span>
+              ) : (
+                <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                  {bookedSlots.length} khung giờ đã bận
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
+              {QUICK_TIME_SLOTS.map((slot) => {
+                const isBooked = bookedTimeMap.has(slot);
+                const isSelected = selectedTime === slot;
+                const slotInfo = bookedTimeMap.get(slot);
+
+                return (
+                  <button
+                    key={slot}
+                    type="button"
+                    disabled={isBooked}
+                    onClick={() => {
+                      if (!isBooked) {
+                        form.setValue("time", slot, { shouldValidate: true });
+                      }
+                    }}
+                    title={
+                      isBooked
+                        ? `Giờ ${slot} đã có khách đặt (${slotInfo?.status === "P" ? "Chờ duyệt" : "Đã xác nhận"})`
+                        : `Chọn giờ ${slot}`
+                    }
+                    className={`relative rounded-xl border px-2 py-1.5 text-xs font-mono transition-all ${
+                      isBooked
+                        ? "cursor-not-allowed border-dashed border-destructive/40 bg-destructive/10 text-destructive line-through opacity-70"
+                        : isSelected
+                          ? "border-primary bg-primary text-primary-foreground font-bold shadow-xs"
+                          : "border-border/70 bg-card hover:border-primary/50 hover:bg-accent text-foreground"
+                    }`}
+                  >
+                    {slot}
+                  </button>
+                );
+              })}
+            </div>
+
+            {isCurrentTimeBooked && (
+              <p className="mt-2 text-xs font-medium text-destructive flex items-center gap-1">
+                ⚠️ Khung giờ <span className="font-mono font-bold">{selectedTime}</span> đã có khách đặt lịch ({bookedTimeMap.get(selectedTime)?.status === "P" ? "Chờ duyệt" : "Đã xác nhận"}). Vui lòng chọn giờ khác!
+              </p>
+            )}
+          </div>
+
           <div>
-            <Label htmlFor="notes">Ghi chú</Label>
+            <Label htmlFor="notes">Yêu cầu / Ghi chú</Label>
             <Textarea
               id="notes"
-              placeholder="VD: muốn cắt + gội, có yêu cầu uốn nhẹ..."
-              className="mt-1.5 min-h-[100px]"
+              placeholder="VD: muốn cắt layer + gội đầu, yêu cầu uốn nhẹ..."
+              className="mt-1.5 min-h-[90px]"
               {...form.register("notes")}
             />
           </div>
 
-          <Button type="submit" size="lg" className="w-full" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            disabled={mutation.isPending || isCurrentTimeBooked}
+          >
             {mutation.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <CalendarPlus className="mr-2 h-4 w-4" />
             )}
-            Xác nhận đặt lịch
+            {isCurrentTimeBooked ? "Giờ này đã bận — Chọn giờ khác" : "Xác nhận đặt lịch"}
           </Button>
         </form>
       </div>
