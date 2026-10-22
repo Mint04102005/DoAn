@@ -50,7 +50,8 @@ function getActionStyle(action: string) {
       icon: CheckCircle,
       iconColor: "text-emerald-600 dark:text-emerald-400",
       dotBg: "bg-emerald-500/10 text-emerald-600",
-      badgeVariant: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+      badgeVariant:
+        "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
       tag: "Phê duyệt",
     };
   }
@@ -63,7 +64,10 @@ function getActionStyle(action: string) {
       tag: "Từ chối",
     };
   }
-  if (lower.includes("khóa tài khoản") || lower.includes("locked")) {
+  if (
+    (lower.includes("khóa tài khoản") && !lower.includes("mở khóa")) ||
+    (lower.includes("locked") && !lower.includes("unlocked"))
+  ) {
     return {
       icon: Lock,
       iconColor: "text-amber-600 dark:text-amber-400",
@@ -111,16 +115,14 @@ function AdminLogsPage() {
             Nhật ký Hoạt động Hệ thống
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Lịch sử kiểm toán toàn diện (Audit Trail) ghi nhận mọi quyết định phê duyệt và thao tác quản trị.
+            Lịch sử kiểm toán toàn diện (Audit Trail) ghi nhận mọi quyết định phê duyệt và thao tác
+            quản trị.
           </p>
         </div>
         <div className="flex items-center gap-3">
           {/* View Mode Switcher on Desktop */}
           <div className="hidden sm:block">
-            <Tabs
-              value={viewMode}
-              onValueChange={(v) => setViewMode(v as "timeline" | "table")}
-            >
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "timeline" | "table")}>
               <TabsList className="border border-border bg-card p-1">
                 <TabsTrigger
                   value="timeline"
@@ -222,7 +224,9 @@ function AdminLogsPage() {
             <AlertCircle className="h-6 w-6" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-foreground">Không thể tải nhật ký hệ thống</h3>
+            <h3 className="text-base font-semibold text-foreground">
+              Không thể tải nhật ký hệ thống
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {logsQuery.error instanceof Error ? logsQuery.error.message : "Vui lòng thử lại."}
             </p>

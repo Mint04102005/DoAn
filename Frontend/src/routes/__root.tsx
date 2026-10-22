@@ -127,6 +127,21 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const checkAuth = useAuthStore((s) => s.checkAuth);
+  const router = useRouter();
+
+  useEffect(() => {
+    const expire = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== localStorage.getItem("accessToken")) return;
+      useAuthStore.getState().logout();
+      queryClient.clear();
+      void router.navigate({ to: "/auth/login" });
+    };
+    const unsubscribe = useAuthStore.subscribe((state, previous) => {
+      if (state.user?.user_id !== previous.user?.user_id) queryClient.clear();
+    });
+    window.addEventListener("auth:expired", expire);
+    return () => { unsubscribe(); window.removeEventListener("auth:expired", expire); };
+  }, [queryClient, router]);
 
   useEffect(() => {
     checkAuth();
