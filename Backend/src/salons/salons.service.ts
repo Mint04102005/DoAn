@@ -25,6 +25,7 @@ export class SalonsService {
       status: SalonStatus.APPROVED,
       owner: {
         role: Role.SALON_OWNER,
+        isLocked: false,
       },
     };
 
@@ -142,13 +143,14 @@ export class SalonsService {
             email: true,
             avatarUrl: true,
             role: true,
+            isLocked: true,
           },
         },
       },
     });
 
     // Salon không tồn tại hoặc chưa được Admin phê duyệt hoặc không có chủ tiệm hợp lệ
-    if (!salon || salon.status !== SalonStatus.APPROVED || !salon.owner) {
+    if (!salon || salon.status !== SalonStatus.APPROVED || !salon.owner || salon.owner.isLocked || salon.owner.role !== Role.SALON_OWNER) {
       throw new NotFoundException('Salon không tồn tại hoặc chưa được công khai');
     }
 
