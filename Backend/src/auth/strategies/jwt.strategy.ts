@@ -29,11 +29,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         phone: true,
         avatarUrl: true,
         role: true,
+        isLocked: true,
         createdAt: true,
       },
     });
 
-    if (!user) {
+    if (!user || user.isLocked) {
       throw new UnauthorizedException('Người dùng không còn tồn tại trên hệ thống');
     }
 
